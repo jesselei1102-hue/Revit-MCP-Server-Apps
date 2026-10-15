@@ -1,6 +1,4 @@
-
-
-https://github.com/user-attachments/assets/c78d5b4f-2710-4c97-813f-fe2e3e29d17c
+﻿https://github.com/user-attachments/assets/c78d5b4f-2710-4c97-813f-fe2e3e29d17c
 
 # Revit MCP Server Apps
 
@@ -21,6 +19,30 @@ Interactive schedule UI mounted as an MCP App:
 - Double-click to edit → **Apply parameters** writes back via `SetParameter`
 - Type column still supports ChangeType + fill + **Apply types**
 - Select / Isolate / zoom helpers for filtered rows
+
+### Why MCP Apps (vs plain Read / Write tools)
+
+MCP Apps and normal MCP tools solve different jobs. Use both.
+
+| | **MCP Apps** (Schedule UI) | **Read / Write tools** (`query_model`, `operate_element`, …) |
+|---|---|---|
+| Who drives | **You** — click, filter, edit, drag-fill | **The AI** — call tools from chat |
+| Best for | Scan a table, pick columns, tweak many instance params | Automation: “set all door Marks…”, scripted workflows |
+| Feedback | Live table in the client | JSON / text back in the conversation |
+
+**Tokens**
+
+- App: load the schedule once into the UI; filtering, column picks, and cell edits stay in the frontend — they do **not** re-enter the model context on every click.
+- Tools-only: large tables often get pasted into chat; each “read → decide → write” loop burns another round of input/output tokens.
+
+For “look at the list and fix parameters,” an App usually uses **far fewer conversation tokens** than asking the model to re-read and rewrite rows in chat.
+
+**Efficiency**
+
+- App: Excel-like — fast for human review and batch tweaks after one open.
+- Tools: fewer wall-clock seconds for fully automatic, rule-clear jobs; slower when a person must describe every small edit in natural language.
+
+**Rule of thumb:** human-in-the-loop table work → MCP Apps; hands-off automation → tools. Opening the Schedule App then letting tools handle scripted follow-ups is a good combo.
 
 ### Revit 2027
 
