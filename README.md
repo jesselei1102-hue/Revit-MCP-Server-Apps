@@ -1,13 +1,14 @@
-[![Cover Image](./assets/cover.png?v=2)](https://github.com/mcp-servers-for-revit/mcp-servers-for-revit)
+[![Cover Image](./assets/cover.png?v=2)](https://github.com/jesselei1102-hue/Revit-MCP-Server-Apps)
 
-# mcp-servers-for-revit
+# Revit MCP Server Apps
 
-**Connect AI assistants to Autodesk Revit via the Model Context Protocol.**
+**Connect AI assistants to Autodesk Revit via the Model Context Protocol — with MCP Apps UI.**
 
-mcp-servers-for-revit enables AI clients like Claude, Cline, and other MCP-compatible tools to read, create, modify, and delete elements in Revit projects. It consists of three components: a TypeScript MCP server that exposes tools to AI, a C# Revit add-in that bridges commands into Revit, and a command set that implements the actual Revit API operations.
+This repository enables AI clients like Cursor, Claude, and other MCP-compatible tools to read, create, modify, and delete elements in Revit projects. It consists of three components: a TypeScript MCP server that exposes tools to AI, a C# Revit add-in that bridges commands into Revit, and a command set that implements the actual Revit API operations.
 
 > [!NOTE]
-> This is a fork of the original [revit-mcp](https://github.com/mcp-servers-for-revit/revit-mcp) project with additional tools and functionality improvements.
+> Fork / derivative of [mcp-servers-for-revit](https://github.com/mcp-servers-for-revit/mcp-servers-for-revit) (itself based on [revit-mcp](https://github.com/mcp-servers-for-revit/revit-mcp)).  
+> This fork adds **MCP Apps** schedule UI (editable instance parameters, cell fill, parameter column picker) and related tools. Original authors retain credit under the MIT license.
 
 ## Architecture
 

@@ -1,4 +1,7 @@
+using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
@@ -42,7 +45,6 @@ namespace RevitMCPCommandSet.Commands.ExecuteDynamicCode
         // 等待执行完成 - IWaitableExternalEventHandler接口实现
         public bool WaitForCompletion(int timeoutMilliseconds = 10000)
         {
-            _resetEvent.Reset();
             return _resetEvent.WaitOne(timeoutMilliseconds);
         }
 
@@ -116,13 +118,7 @@ namespace AIGeneratedCode
 }}";
 
             var syntaxTree = CSharpSyntaxTree.ParseText(wrappedCode);
-
-            // 添加必要的程序集引用（引用所有已加载的程序集）
-            var references = AppDomain.CurrentDomain.GetAssemblies()
-                .Where(a => !a.IsDynamic && !string.IsNullOrEmpty(a.Location))
-                .Select(a => MetadataReference.CreateFromFile(a.Location))
-                .Cast<MetadataReference>()
-                .ToList();
+            var references = CreateCompilationReferences();
 
             // 编译代码
             var compilation = CSharpCompilation.Create(
@@ -153,6 +149,68 @@ namespace AIGeneratedCode
 
                 return executeMethod.Invoke(null, new object[] { doc, parameters });
             }
+        }
+
+        private static List<MetadataReference> CreateCompilationReferences()
+        {
+            var chosen = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                string location;
+                string name;
+                try
+                {
+                    if (assembly.IsDynamic)
+                        continue;
+                    location = assembly.Location;
+                    if (string.IsNullOrEmpty(location) || !File.Exists(location))
+                        continue;
+                    name = assembly.GetName().Name;
+                }
+                catch
+                {
+                    continue;
+                }
+
+                if (string.IsNullOrEmpty(name))
+                    continue;
+
+                if (!chosen.TryGetValue(name, out var existing) || PreferAssemblyLocation(location, existing))
+                    chosen[name] = location;
+            }
+
+            var references = new List<MetadataReference>();
+            foreach (var path in chosen.Values)
+            {
+                try
+                {
+                    references.Add(MetadataReference.CreateFromFile(path));
+                }
+                catch
+                {
+                    // Skip assemblies Roslyn cannot open.
+                }
+            }
+
+            return references;
+        }
+
+        private static bool PreferAssemblyLocation(string candidate, string existing)
+        {
+            return AssemblyLocationScore(candidate) < AssemblyLocationScore(existing);
+        }
+
+        private static int AssemblyLocationScore(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return 10;
+            if (path.IndexOf("\\AddIns\\", StringComparison.OrdinalIgnoreCase) >= 0
+                || path.IndexOf("/AddIns/", StringComparison.OrdinalIgnoreCase) >= 0)
+                return 3;
+            if (path.IndexOf("\\Autodesk\\Revit ", StringComparison.OrdinalIgnoreCase) >= 0
+                || path.IndexOf("/Autodesk/Revit ", StringComparison.OrdinalIgnoreCase) >= 0)
+                return 0;
+            return 1;
         }
 
         public string GetName()

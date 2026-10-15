@@ -1,24 +1,16 @@
-import Database from 'better-sqlite3';
-import { join } from 'path';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
+import Database from "better-sqlite3";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const DB_PATH = join(__dirname, "..", "..", "revit-data.db");
 
-// Database path (stored in project root)
-const DB_PATH = join(__dirname, '..', '..', 'revit-data.db');
+let dbInstance: Database.Database | null = null;
+let dbError: Error | null = null;
 
-// Initialize database connection
-export const db = new Database(DB_PATH);
-
-// Enable foreign keys
-db.pragma('foreign_keys = ON');
-
-// Initialize database schema
-export function initializeDatabase() {
-  // Create projects table
-  db.exec(`
+function initializeSchema(database: Database.Database) {
+  database.exec(`
     CREATE TABLE IF NOT EXISTS projects (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       project_name TEXT NOT NULL,
@@ -34,8 +26,7 @@ export function initializeDatabase() {
     )
   `);
 
-  // Create rooms table
-  db.exec(`
+  database.exec(`
     CREATE TABLE IF NOT EXISTS rooms (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id INTEGER NOT NULL,
@@ -55,8 +46,7 @@ export function initializeDatabase() {
     )
   `);
 
-  // Create index for faster queries
-  db.exec(`
+  database.exec(`
     CREATE INDEX IF NOT EXISTS idx_projects_name ON projects(project_name);
     CREATE INDEX IF NOT EXISTS idx_projects_timestamp ON projects(timestamp);
     CREATE INDEX IF NOT EXISTS idx_rooms_project_id ON rooms(project_id);
@@ -64,7 +54,31 @@ export function initializeDatabase() {
   `);
 }
 
-// Initialize on module load
-initializeDatabase();
+export function getDb(): Database.Database {
+  if (dbInstance) return dbInstance;
+  if (dbError) throw dbError;
+  try {
+    const database = new Database(DB_PATH);
+    database.pragma("foreign_keys = ON");
+    initializeSchema(database);
+    dbInstance = database;
+    return database;
+  } catch (error) {
+    dbError = error instanceof Error ? error : new Error(String(error));
+    throw dbError;
+  }
+}
+
+export function initializeDatabase() {
+  getDb();
+}
+
+export const db = new Proxy({} as Database.Database, {
+  get(_target, prop, _receiver) {
+    const real = getDb();
+    const value = Reflect.get(real, prop, real);
+    return typeof value === "function" ? value.bind(real) : value;
+  },
+});
 
 export default db;

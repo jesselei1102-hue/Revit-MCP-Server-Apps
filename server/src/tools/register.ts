@@ -18,7 +18,9 @@ export async function registerTools(server: McpServer) {
       file !== "index.ts" &&
       file !== "index.js" &&
       file !== "register.ts" &&
-      file !== "register.js"
+      file !== "register.js" &&
+      file !== "mcpAnnotations.ts" &&
+      file !== "mcpAnnotations.js"
   );
 
   // 动态导入并注册每个工具
@@ -31,13 +33,15 @@ export async function registerTools(server: McpServer) {
       const module = await import(importPath);
 
       // 查找并执行注册函数
-      const registerFunctionName = Object.keys(module).find(
+      const registerFunctions = Object.keys(module).filter(
         (key) => key.startsWith("register") && typeof module[key] === "function"
       );
 
-      if (registerFunctionName) {
-        module[registerFunctionName](server);
-        console.error(`已注册工具: ${file}`);
+      if (registerFunctions.length > 0) {
+        for (const registerFunctionName of registerFunctions) {
+          module[registerFunctionName](server);
+        }
+        console.error(`[info] registered ${file} (${registerFunctions.join(", ")})`);
       } else {
         console.warn(`警告: 在文件 ${file} 中未找到注册函数`);
       }

@@ -2,6 +2,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using RevitMCPSDK.API.Interfaces;
 using RevitMCPCommandSet.Models.Common;
+using RevitMCPCommandSet.Utils;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -100,8 +101,12 @@ namespace RevitMCPCommandSet.Services
 
             Document doc = uidoc.Document;
 
-            // 将int类型的元素ID转换为ElementId类型
+            // Convert numeric Ids to ElementId (long on Revit 2024+)
+#if REVIT2024_OR_GREATER
             ICollection<ElementId> elementIds = setting.ElementIds.Select(id => new ElementId(id)).ToList();
+#else
+            ICollection<ElementId> elementIds = setting.ElementIds.Select(id => new ElementId((int)id)).ToList();
+#endif
 
             // 解析操作类型
             ElementOperationType action;
@@ -208,16 +213,19 @@ namespace RevitMCPCommandSet.Services
                     return true;
 
                 case ElementOperationType.SetColor:
-                    // 将元素设置为指定颜色
+                case ElementOperationType.Highlight:
+                {
+                    if (action == ElementOperationType.Highlight)
+                        setting.ColorValue = new[] { 255, 0, 0 };
                     using (Transaction trans = new Transaction(doc, "设置元素颜色"))
                     {
                         trans.Start();
                         SetElementsColor(doc, elementIds, setting.ColorValue);
                         trans.Commit();
                     }
-                    // 滚动到这些元素使其可见
                     uidoc.ShowElements(elementIds);
                     return true;
+                }
 
 
                 case ElementOperationType.SetTransparency:
@@ -301,6 +309,122 @@ namespace RevitMCPCommandSet.Services
                     {
                         trans.Start();
                         doc.ActiveView.DisableTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate);
+                        trans.Commit();
+                    }
+                    return true;
+
+                case ElementOperationType.ChangeType:
+                {
+                    if (setting.TypeId <= 0)
+                        throw new Exception("ChangeType requires a valid typeId (FamilySymbol / WallType / FloorType ElementId).");
+
+#if REVIT2024_OR_GREATER
+                    var typeId = new ElementId(setting.TypeId);
+#else
+                    var typeId = new ElementId((int)setting.TypeId);
+#endif
+                    if (doc.GetElement(typeId) is not ElementType)
+                        throw new Exception($"typeId {setting.TypeId} is not an ElementType in the document.");
+
+                    var changed = 0;
+                    var skipped = new List<string>();
+                    using (Transaction trans = new Transaction(doc, "Change element type"))
+                    {
+                        trans.Start();
+                        foreach (ElementId id in elementIds)
+                        {
+                            var element = doc.GetElement(id);
+                            if (element == null)
+                            {
+                                skipped.Add($"{id.Value}: not found");
+                                continue;
+                            }
+
+                            try
+                            {
+                                if (!element.IsValidType(typeId))
+                                {
+                                    skipped.Add($"{id.Value}: type not valid for this element");
+                                    continue;
+                                }
+
+                                element.ChangeTypeId(typeId);
+                                changed++;
+                            }
+                            catch (Exception ex)
+                            {
+                                skipped.Add($"{id.Value}: {ex.Message}");
+                            }
+                        }
+                        trans.Commit();
+                    }
+
+                    if (changed == 0)
+                        throw new Exception(
+                            $"No elements changed type. Skipped: {string.Join("; ", skipped.Take(8))}");
+
+                    uidoc.Selection.SetElementIds(elementIds);
+                    uidoc.ShowElements(elementIds);
+                    return true;
+                }
+
+                case ElementOperationType.SetParameter:
+                {
+                    if (string.IsNullOrWhiteSpace(setting.ParameterName))
+                        throw new Exception("SetParameter requires parameterName.");
+
+                    var changed = 0;
+                    var skipped = new List<string>();
+                    using (Transaction trans = new Transaction(doc, "Set instance parameter"))
+                    {
+                        trans.Start();
+                        foreach (ElementId id in elementIds)
+                        {
+                            var element = doc.GetElement(id);
+                            if (element == null)
+                            {
+                                skipped.Add($"{id.Value}: not found");
+                                continue;
+                            }
+
+                            var parameter = PublicMcpUtils.FindParameter(element, setting.ParameterName);
+                            if (parameter == null)
+                            {
+                                skipped.Add($"{id.Value}: parameter '{setting.ParameterName}' not found");
+                                continue;
+                            }
+                            if (!PublicMcpUtils.IsEditableInstanceParameter(parameter))
+                            {
+                                skipped.Add($"{id.Value}: parameter '{setting.ParameterName}' is not editable");
+                                continue;
+                            }
+                            if (!PublicMcpUtils.TrySetParameterValue(parameter, setting.ParameterValue, out var setError))
+                            {
+                                skipped.Add($"{id.Value}: {setError}");
+                                continue;
+                            }
+                            changed++;
+                        }
+                        trans.Commit();
+                    }
+
+                    if (changed == 0)
+                        throw new Exception(
+                            $"No parameters set. Skipped: {string.Join("; ", skipped.Take(8))}");
+
+                    return true;
+                }
+
+                case ElementOperationType.ResetOverride:
+                case ElementOperationType.ResetColor:
+                    using (Transaction trans = new Transaction(doc, "清除图形覆盖"))
+                    {
+                        trans.Start();
+                        var clearSettings = new OverrideGraphicSettings();
+                        foreach (ElementId id in elementIds)
+                        {
+                            doc.ActiveView.SetElementOverrides(id, clearSettings);
+                        }
                         trans.Commit();
                     }
                     return true;

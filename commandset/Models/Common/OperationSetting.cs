@@ -61,6 +61,31 @@ namespace RevitMCPCommandSet.Models.Common
         /// 重置隔离（显示所有图元）
         /// </summary>
         ResetIsolate,
+
+        /// <summary>
+        /// 清除当前视图中的图形覆盖（颜色、填充、透明度）
+        /// </summary>
+        ResetOverride,
+
+        /// <summary>
+        /// ResetOverride 的别名，清除 SetColor / SetTransparency 产生的覆盖
+        /// </summary>
+        ResetColor,
+
+        /// <summary>
+        /// SetColor 的便捷操作，将图元标红
+        /// </summary>
+        Highlight,
+
+        /// <summary>
+        /// 将图元改为指定族类型 / 系统类型（Element.ChangeTypeId）
+        /// </summary>
+        ChangeType,
+
+        /// <summary>
+        /// 设置实例参数值（parameterName + parameterValue）
+        /// </summary>
+        SetParameter,
     }
 
 
@@ -73,7 +98,7 @@ namespace RevitMCPCommandSet.Models.Common
         /// 需要操作的元素ID列表
         /// </summary>
         [JsonProperty("elementIds")]
-        public List<int> ElementIds = new List<int>();
+        public List<long> ElementIds = new List<long>();
 
         /// <summary>
         /// 需要执行的动作，存储ElementOperationType枚举的string类型的值
@@ -92,5 +117,23 @@ namespace RevitMCPCommandSet.Models.Common
         /// </summary>
         [JsonProperty("colorValue")]
         public int[] ColorValue { get; set; } = new int[] { 255, 0, 0 }; // 默认红色
+
+        /// <summary>
+        /// ChangeType 目标类型 ElementId（FamilySymbol / WallType / FloorType 等）
+        /// </summary>
+        [JsonProperty("typeId")]
+        public long TypeId { get; set; }
+
+        /// <summary>
+        /// SetParameter 参数名
+        /// </summary>
+        [JsonProperty("parameterName")]
+        public string ParameterName { get; set; }
+
+        /// <summary>
+        /// SetParameter 参数值（显示字符串，经 SetValueString / 类型解析写入）
+        /// </summary>
+        [JsonProperty("parameterValue")]
+        public string ParameterValue { get; set; }
     }
 }

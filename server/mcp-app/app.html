@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MCP Apps · Revit Schedule</title>
+  <style>
+    :root { color-scheme: light; }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      min-height: 100%;
+      background: #f7f6f3;
+    }
+    body {
+      font-family: var(--font-sans, var(--font-family, ui-sans-serif, system-ui, sans-serif));
+      font-size: 13px;
+      line-height: 1.35;
+      color: #1c1917;
+      padding: 12px 14px 16px;
+    }
+
+    .head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .head h1 {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .status {
+      font-size: 12px;
+      color: #78716c;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .metrics {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 8px;
+    }
+    .metric b {
+      display: block;
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.1;
+    }
+    .metric span {
+      font-size: 11px;
+      color: #78716c;
+    }
+    .metric.warn b { color: #b42318; }
+
+    #composition { margin-bottom: 12px; }
+    #composition[hidden] { display: none; }
+    #donut-svg { display: none; }
+    .donut-legend {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .comp-bar {
+      display: flex;
+      height: 6px;
+      width: 100%;
+      border-radius: 99px;
+      overflow: hidden;
+      background: #e7e5e4;
+      margin-bottom: 6px;
+    }
+    .comp-bar button {
+      height: 100%;
+      border: 0;
+      padding: 0;
+      min-width: 2px;
+      border-radius: 0;
+      background: #a8a29e;
+      cursor: pointer;
+    }
+    .comp-bar button.on,
+    .comp-bar button:hover { background: #1c1917; }
+    .comp-bar button.other { cursor: default; }
+    .legend-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      font-size: 12px;
+      color: #78716c;
+      cursor: pointer;
+    }
+    .legend-row.on { color: #1c1917; font-weight: 600; }
+    .legend-count { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2px 10px;
+      margin-bottom: 10px;
+    }
+    button {
+      font: inherit;
+      font-size: 12px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .actions > button, .segment {
+      border: 1px solid #d6d3d1;
+      background: #fff;
+      color: #1c1917;
+      padding: 6px 10px;
+    }
+    #btn-confirm {
+      background: #1c1917;
+      color: #fff;
+      border-color: transparent;
+      font-weight: 600;
+    }
+    #btn-apply-types,
+    #btn-apply-params {
+      background: #fff;
+      color: #b42318;
+      border-color: #b42318;
+      font-weight: 600;
+    }
+    #btn-apply-types:disabled,
+    #btn-apply-params:disabled,
+    #btn-clear-pending:disabled { display: none; }
+    button:disabled { opacity: 0.4; cursor: default; }
+    .links button {
+      border: 0;
+      background: transparent;
+      color: #78716c;
+      padding: 2px 0;
+    }
+    .links button:hover { color: #1c1917; }
+
+    .segment {
+      display: inline-flex;
+      padding: 2px;
+      gap: 2px;
+    }
+    .segment label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      color: #78716c;
+    }
+    .segment input { accent-color: currentColor; }
+    .segment label:has(input:checked) {
+      background: #fff;
+      color: #1c1917;
+    }
+
+    .filters {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    label.filter {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+      font-size: 10px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #a8a29e;
+    }
+    label.filter.search { grid-column: 1 / -1; }
+    select, input[type="search"] {
+      width: 100%;
+      min-width: 0;
+      font: inherit;
+      font-size: 13px;
+      text-transform: none;
+      letter-spacing: 0;
+      color: #1c1917;
+      background: #fff;
+      border: 1px solid #d6d3d1;
+      border-radius: 6px;
+      padding: 6px 8px;
+      outline: none;
+    }
+    select:focus, input[type="search"]:focus {
+      border-color: #1c1917;
+    }
+
+    .ms-wrap { position: relative; min-width: 0; }
+    .ms-trigger {
+      width: 100%;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font: inherit;
+      font-size: 13px;
+      text-transform: none;
+      letter-spacing: 0;
+      color: #1c1917;
+      background: #fff;
+      border: 1px solid #d6d3d1;
+      border-radius: 6px;
+      padding: 6px 8px;
+      text-align: left;
+      cursor: pointer;
+    }
+    .ms-trigger:hover,
+    .ms-wrap.open .ms-trigger { border-color: #1c1917; }
+    .ms-trigger .ms-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    .ms-trigger .ms-caret {
+      flex: 0 0 auto;
+      color: #a8a29e;
+      font-size: 10px;
+    }
+    .ms-panel {
+      display: none;
+      position: absolute;
+      z-index: 40;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      min-width: 240px;
+      max-height: 280px;
+      background: #fff;
+      border: 1px solid #e7e5e4;
+      border-radius: 8px;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+      padding: 8px;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .ms-wrap.open .ms-panel { display: flex; }
+    .ms-panel input[type="search"] {
+      flex: 0 0 auto;
+    }
+    .ms-actions {
+      display: flex;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+    .ms-actions button {
+      border: 0;
+      background: transparent;
+      color: #78716c;
+      padding: 2px 0;
+      font-size: 12px;
+    }
+    .ms-actions button:hover { color: #1c1917; }
+    .ms-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      overflow: auto;
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: 200px;
+    }
+    .ms-list li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      text-transform: none;
+      letter-spacing: 0;
+      color: #1c1917;
+      cursor: pointer;
+    }
+    .ms-list li:hover { background: #f5f5f4; }
+    .ms-list li input { accent-color: #1c1917; flex: 0 0 auto; }
+    .ms-list li span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    .ms-empty {
+      padding: 10px 6px;
+      font-size: 12px;
+      color: #a8a29e;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
+    #table-container {
+      overflow: auto;
+      max-height: calc(100vh - 250px);
+      border: 1px solid #e7e5e4;
+      border-radius: 8px;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 500;
+      color: #78716c;
+      background: #fafaf9;
+      padding: 8px 10px;
+      border-bottom: 1px solid #e7e5e4;
+    }
+    th.check-col, td.check-col { width: 32px; text-align: center; }
+    td {
+      padding: 7px 10px;
+      border-bottom: 1px solid #f0eeeb;
+      vertical-align: middle;
+      background: #fff;
+    }
+    tr:last-child td { border-bottom: 0; }
+    tr:hover td { background: #f5f5f4; }
+    tr.checked td { background: #e7f0ea; }
+    tr.dirty td.family-cell,
+    td.param-dirty { background: #f8f1e7; }
+
+    .family-cell,
+    .param-cell {
+      position: relative;
+      min-width: 120px;
+      padding-right: 14px !important;
+    }
+    .param-cell.editable { cursor: cell; }
+    .param-cell .cell-value {
+      display: block;
+      min-height: 1.2em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .param-cell input.cell-edit {
+      width: 100%;
+      font: inherit;
+      font-size: 13px;
+      border: 0;
+      outline: none;
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      margin: 0;
+    }
+    td.cell-selected {
+      outline: 2px solid #1d4ed8;
+      outline-offset: -2px;
+      z-index: 2;
+      box-shadow: inset 0 0 0 1px #1d4ed8;
+    }
+    td.fill-range {
+      outline: 2px solid #1d4ed8;
+      outline-offset: -2px;
+      background: #eff6ff !important;
+      z-index: 1;
+    }
+    .type-face {
+      display: block;
+      width: 100%;
+      text-align: left;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      font-size: 13px;
+      padding: 2px 0;
+      border-radius: 0;
+      cursor: pointer;
+    }
+    .type-face:hover { color: #1d4ed8; }
+    .family-cell .readonly,
+    .param-cell .readonly { color: #a8a29e; }
+    #type-menu {
+      position: fixed;
+      z-index: 30;
+      display: none;
+      width: 240px;
+      max-height: 220px;
+      overflow: auto;
+      padding: 4px;
+      background: #fff;
+      color: #1c1917;
+      border: 1px solid #e7e5e4;
+      border-radius: 8px;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+    }
+    #type-menu.open { display: block; }
+    #type-menu .menu-status {
+      padding: 8px;
+      font-size: 12px;
+      color: #78716c;
+    }
+    #type-menu button {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 1px;
+      width: 100%;
+      text-align: left;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      border-radius: 4px;
+      padding: 6px 8px;
+      font-size: 12px;
+    }
+    #type-menu button small {
+      color: #a8a29e;
+      font-size: 11px;
+    }
+    #type-menu button:hover,
+    #type-menu button.on {
+      background: #f5f5f4;
+    }
+    .fill-handle {
+      position: absolute;
+      right: 1px;
+      bottom: 1px;
+      width: 8px;
+      height: 8px;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 1px;
+      background: #1d4ed8;
+      opacity: 0;
+      cursor: crosshair;
+      z-index: 3;
+    }
+    td.cell-selected .fill-handle,
+    td.family-cell:hover .fill-handle,
+    tr.dirty td.family-cell .fill-handle,
+    body.filling .fill-handle { opacity: 1; }
+    body.filling { cursor: crosshair; user-select: none; }
+    body.filling .fill-handle { pointer-events: none; }
+    body.filling td.cell-selected { outline-color: transparent; box-shadow: none; }
+  </style>
+</head>
+<body>
+  <header class="head">
+    <h1>MCP Apps · Schedule</h1>
+    <p class="status" id="status">Waiting…</p>
+  </header>
+
+  <div class="metrics">
+    <div class="metric warn">
+      <b id="kpi-errors">—</b>
+      <span id="kpi-errors-sub">Warnings</span>
+    </div>
+    <div class="metric">
+      <b id="kpi-detach">—</b>
+      <span id="kpi-detach-sub">Detachable</span>
+    </div>
+  </div>
+
+  <div id="composition">
+    <svg id="donut-svg" width="0" height="0" aria-hidden="true"></svg>
+    <ul class="donut-legend" id="donut-legend"></ul>
+  </div>
+
+  <div class="actions">
+    <button id="btn-confirm" type="button">Apply in Revit</button>
+    <div class="segment">
+      <label><input type="radio" name="apply-mode" value="select" checked /> Select</label>
+      <label><input type="radio" name="apply-mode" value="isolate" /> Isolate</label>
+    </div>
+    <button id="btn-apply-types" type="button" disabled>Apply types</button>
+    <button id="btn-apply-params" type="button" disabled>Apply parameters</button>
+  </div>
+  <div class="links">
+    <button id="btn-select-all" type="button">Select all</button>
+    <button id="btn-deselect-all" type="button">Deselect</button>
+    <button id="btn-clear-pending" type="button" disabled>Clear edits</button>
+    <button id="btn-reset-view" type="button">Reset isolate</button>
+    <button id="btn-refresh" type="button">Refresh</button>
+    <button id="btn-clear-filters" type="button">Clear filters</button>
+  </div>
+
+  <div class="filters">
+    <label class="filter search">Search
+      <input id="filter-search" type="search" placeholder="Name, type, level…" />
+    </label>
+    <label class="filter">Category
+      <select id="filter-category"><option value="">All</option></select>
+    </label>
+    <label class="filter">Level
+      <select id="filter-level"><option value="">All</option></select>
+    </label>
+    <label class="filter">Family
+      <select id="filter-family"><option value="">All</option></select>
+    </label>
+    <label class="filter">Type
+      <select id="filter-type"><option value="">All</option></select>
+    </label>
+    <label class="filter">Link
+      <select id="filter-link"><option value="">All</option></select>
+    </label>
+    <label class="filter">Parameters
+      <div class="ms-wrap" id="param-picker">
+        <button type="button" class="ms-trigger" id="param-picker-trigger" aria-haspopup="listbox" aria-expanded="false">
+          <span class="ms-label" id="param-picker-label">None selected</span>
+          <span class="ms-caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="ms-panel" id="param-picker-panel" role="listbox" aria-multiselectable="true">
+          <input id="param-picker-search" type="search" placeholder="Search parameters…" autocomplete="off" />
+          <div class="ms-actions">
+            <button type="button" id="param-picker-all">Select visible</button>
+            <button type="button" id="param-picker-none">Clear</button>
+          </div>
+          <ul class="ms-list" id="param-picker-list"></ul>
+        </div>
+      </div>
+    </label>
+  </div>
+
+  <div id="table-container"></div>
+  <div id="type-menu" role="listbox"></div>
+  <script type="module" src="./src/mcp-app.ts"></script>
+</body>
+</html>

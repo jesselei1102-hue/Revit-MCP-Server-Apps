@@ -122,6 +122,41 @@
       "commandName": "create_dimensions",
       "description": "Create dimension annotations between elements or points in the current view",
       "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "query_model",
+      "description": "Query element Ids with category, name, level, bounding box, and parameter filters",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "get_element_data",
+      "description": "Get identity, bounding box, and parameter data for elements by Id",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "open_view",
+      "description": "Open a view and set it as the active view",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "zoom_to_elements",
+      "description": "Zoom the current view to specific elements",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "select_elements",
+      "description": "Select elements by Id in the active view",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "export_views",
+      "description": "Export views to PNG, JPG, BMP, TIFF, PDF, or schedules to CSV",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "get_running_revit_instances",
+      "description": "Return the connected Revit process Id and open document",
+      "assemblyPath": "RevitMCPCommandSet.dll"
     }
   ]
 }

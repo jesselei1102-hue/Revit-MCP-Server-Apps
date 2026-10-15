@@ -12,12 +12,12 @@ const transactionModeSchema = z
 export function registerSendCodeToRevitTool(server: McpServer) {
   server.tool(
     "send_code_to_revit",
-    "Send C# code to Revit for execution. The code will be inserted into a template with access to the Revit Document and parameters. Your code should be written to work within the Execute method of the template.",
+    "LAST RESORT. Do not use if a dedicated Revit tool can do the job. Prefer query_model, get_element_data, get_current_view_elements, get_selected_elements, ai_element_filter, operate_element, create_grid, create_level, create_room, create_point_based_element, create_line_based_element, create_surface_based_element, create_dimensions, open_view, zoom_to_elements, select_elements, export_views, color_elements, delete_element. Use only when those tools cannot express the API (complex geometry, custom transactions, unsupported filters). Code is inserted into a template Execute method with Document access.",
     {
       code: z
         .string()
         .describe(
-          "The C# code to execute in Revit. This code will be inserted into the Execute method of a template with access to Document and parameters."
+          "C# snippet for cases no dedicated tool covers. Inserted into the template Execute method. Do not use this to list, select, color, delete, or create elements that existing tools already handle."
         ),
       parameters: z
         .array(z.string())
@@ -26,6 +26,11 @@ export function registerSendCodeToRevitTool(server: McpServer) {
           "Optional execution parameters that will be passed to your code"
         ),
       transactionMode: transactionModeSchema,
+    },
+    {
+      title: "Last-resort C# execution",
+      destructiveHint: true,
+      openWorldHint: false,
     },
     async (args, extra) => {
       const params = {

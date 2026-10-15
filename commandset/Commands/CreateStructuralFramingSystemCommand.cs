@@ -44,7 +44,7 @@ namespace RevitMCPCommandSet.Commands
                 _handler.SetParameters(data);
 
                 // Wait for completion with 15 second timeout (beam creation can be slower)
-                if (RaiseAndWaitForCompletion(15000))
+                if (RaiseAndWaitForCompletion(60000))
                 {
                     return _handler.Result;
                 }

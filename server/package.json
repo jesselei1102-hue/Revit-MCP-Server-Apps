@@ -1,7 +1,7 @@
 {
-    "name": "mcp-server-for-revit",
+    "name": "@jesselei1102-hue/revit-mcp-server-apps",
     "version": "1.0.0",
-    "description": "MCP server for interacting with Autodesk Revit through AI assistants like Claude",
+    "description": "MCP server + MCP Apps for Autodesk Revit (fork of mcp-server-for-revit with schedule UI)",
     "main": "index.js",
     "type": "module",
     "bin": {
@@ -12,8 +12,8 @@
     },
     "scripts": {
         "clean": "rimraf build",
-        "prebuild": "npm run clean",
-        "build": "tsc",
+        "build:app": "vite build",
+        "build": "npm run clean && tsc && npm run build:app",
         "prepublishOnly": "npm run build"
     },
     "files": [
@@ -22,13 +22,15 @@
     ],
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/mcp-servers-for-revit/mcp-servers-for-revit.git"
+        "url": "git+https://github.com/jesselei1102-hue/Revit-MCP-Server-Apps.git"
     },
     "keywords": [
         "mcp",
+        "mcp-apps",
         "revit",
         "autodesk",
         "claude",
+        "cursor",
         "ai",
         "bim",
         "architecture"
@@ -38,10 +40,11 @@
         "access": "public"
     },
     "bugs": {
-        "url": "https://github.com/mcp-servers-for-revit/mcp-servers-for-revit/issues"
+        "url": "https://github.com/jesselei1102-hue/Revit-MCP-Server-Apps/issues"
     },
-    "homepage": "https://github.com/mcp-servers-for-revit/mcp-servers-for-revit#readme",
+    "homepage": "https://github.com/jesselei1102-hue/Revit-MCP-Server-Apps#readme",
     "dependencies": {
+        "@modelcontextprotocol/ext-apps": "^1.1.2",
         "@modelcontextprotocol/sdk": "^1.7.0",
         "better-sqlite3": "^12.8.0",
         "ws": "^8.18.1",
@@ -52,6 +55,8 @@
         "@types/node": "^22.13.10",
         "@types/ws": "^8.18.0",
         "rimraf": "^5.0.10",
-        "typescript": "^5.8.2"
+        "typescript": "^5.8.2",
+        "vite": "^7.1.5",
+        "vite-plugin-singlefile": "^2.3.0"
     }
 }

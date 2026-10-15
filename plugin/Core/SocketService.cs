@@ -101,19 +101,37 @@ namespace revit_mcp_plugin.Core
 
             try
             {
-                _isRunning = true;
                 _listener = new TcpListener(IPAddress.Any, _port);
                 _listener.Start();
 
+                _isRunning = true;
                 _listenerThread = new Thread(ListenForClients)
                 {
                     IsBackground = true
                 };
-                _listenerThread.Start();              
+                _listenerThread.Start();
+                _logger.Info("MCP server started on port {0}", _port);
             }
-            catch (Exception)
+            catch (SocketException ex)
             {
-                _isRunning = false;
+                CleanupFailedStart();
+                if (ex.SocketErrorCode == SocketError.AddressAlreadyInUse)
+                {
+                    throw new InvalidOperationException(
+                        string.Format("Port {0} is already in use. Stop the other process and try again.", _port),
+                        ex);
+                }
+
+                throw new InvalidOperationException(
+                    string.Format("Unable to start MCP server on port {0}: {1}", _port, ex.Message),
+                    ex);
+            }
+            catch (Exception ex)
+            {
+                CleanupFailedStart();
+                throw new InvalidOperationException(
+                    string.Format("Unable to start MCP server on port {0}: {1}", _port, ex.Message),
+                    ex);
             }
         }
 
@@ -121,22 +139,37 @@ namespace revit_mcp_plugin.Core
         {
             if (!_isRunning) return;
 
+            _isRunning = false;
+
             try
             {
-                _isRunning = false;
-
                 _listener?.Stop();
                 _listener = null;
 
-                if(_listenerThread!=null && _listenerThread.IsAlive)
+                if (_listenerThread != null && _listenerThread.IsAlive)
                 {
                     _listenerThread.Join(1000);
                 }
+
+                _logger.Info("MCP server stopped");
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // log error
+                _logger.Error("Error stopping MCP server: {0}", ex.Message);
             }
+        }
+
+        private void CleanupFailedStart()
+        {
+            _isRunning = false;
+            try
+            {
+                _listener?.Stop();
+            }
+            catch
+            {
+            }
+            _listener = null;
         }
 
         private void ListenForClients()

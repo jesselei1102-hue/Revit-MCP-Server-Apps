@@ -87,30 +87,19 @@ namespace RevitMCPCommandSet.Services
                 {
                     trans.Start();
 
-                    // 1. Resolve Level - Find nearest existing level to the target elevation (like walls do)
-                    Level level = doc.FindNearestLevel(Parameters.Elevation / 304.8);
-                    if (level == null)
-                    {
-                        // Fallback: try to find any level
-                        level = new FilteredElementCollector(doc)
-                            .OfClass(typeof(Level))
-                            .Cast<Level>()
-                            .FirstOrDefault();
-                    }
+                    Level level = ResolveLevel(doc, Parameters.LevelName, warnings);
                     if (level == null)
                     {
                         throw new Exception("No levels found in project. Please create at least one level before creating beam systems.");
                     }
 
-                    // Add info about which level was selected
                     double levelElevationMm = level.Elevation * 304.8;
-                    warnings.Add($"Using level '{level.Name}' at elevation {levelElevationMm:F0}mm (nearest to target elevation {Parameters.Elevation:F0}mm)");
+                    warnings.Add($"Using level '{level.Name}' at elevation {levelElevationMm:F0}mm");
 
-                    // 2. Build rectangular profile (4 curves in closed loop)
                     List<Curve> profileCurves = BuildRectangularProfile(
                         Parameters.XMin, Parameters.XMax,
                         Parameters.YMin, Parameters.YMax,
-                        Parameters.Elevation
+                        level.Elevation
                     );
 
                     // 3. Map direction edge to curve index
@@ -143,7 +132,7 @@ namespace RevitMCPCommandSet.Services
 
                     // 8. Apply elevation offset to all beams using Z_OFFSET_VALUE parameter
                     // Note: BeamSystem.Create() places beams at level elevation. We use Z_OFFSET_VALUE to offset them.
-                    double elevationOffsetFt = (Parameters.Elevation / 304.8) - level.Elevation;
+                    double elevationOffsetFt = Parameters.Elevation / 304.8;
 
                     if (Math.Abs(elevationOffsetFt) > 0.001) // Only apply if there's a meaningful offset
                     {
@@ -272,7 +261,6 @@ namespace RevitMCPCommandSet.Services
                     Message = errorDetails,
                     Response = null
                 };
-                TaskDialog.Show("Error", errorDetails);
             }
             finally
             {
@@ -394,14 +382,13 @@ namespace RevitMCPCommandSet.Services
         /// <summary>
         /// Build rectangular profile from boundary coordinates
         /// </summary>
-        private List<Curve> BuildRectangularProfile(double xMin, double xMax, double yMin, double yMax, double elevation)
+        private List<Curve> BuildRectangularProfile(double xMin, double xMax, double yMin, double yMax, double elevationFt)
         {
-            // Convert mm to feet
             double xMinFt = xMin / 304.8;
             double xMaxFt = xMax / 304.8;
             double yMinFt = yMin / 304.8;
             double yMaxFt = yMax / 304.8;
-            double elevFt = elevation / 304.8;
+            double elevFt = elevationFt;
 
             List<Curve> curves = new List<Curve>();
 
@@ -510,8 +497,7 @@ namespace RevitMCPCommandSet.Services
         /// </summary>
         public bool WaitForCompletion(int timeoutMilliseconds = 15000)
         {
-            _resetEvent.Reset();
-        return _resetEvent.WaitOne(timeoutMilliseconds);
+            return _resetEvent.WaitOne(timeoutMilliseconds);
         }
 
         /// <summary>
