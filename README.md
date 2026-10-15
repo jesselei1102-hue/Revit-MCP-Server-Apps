@@ -6,6 +6,8 @@ Based on [mcp-servers-for-revit](https://github.com/mcp-servers-for-revit/mcp-se
 
 This fork keeps the original Revit MCP bridge (server + plugin + command set) and adds **MCP Apps UI**, **Revit 2027** support, and a set of new tools focused on querying, navigating, and editing the model from Cursor / other MCP clients.
 
+The Schedule App is designed as a **HITL (human-in-the-loop) workflow**: the AI opens and loads the model data; **you** review, filter, edit, and confirm before writes go back to Revit.
+
 ## What’s new in this fork
 
 ### MCP Apps · Schedule (`mcp_apps_get_schedule_data`)
@@ -22,11 +24,12 @@ Interactive schedule UI mounted as an MCP App:
 
 ### Why MCP Apps (vs plain Read / Write tools)
 
-MCP Apps and normal MCP tools solve different jobs. Use both.
+MCP Apps and normal MCP tools solve different jobs. Use both. The Schedule App is explicitly a **HITL** path: AI assists with loading/context; humans stay in control of review and apply.
 
-| | **MCP Apps** (Schedule UI) | **Read / Write tools** (`query_model`, `operate_element`, …) |
+| | **MCP Apps** (Schedule UI, HITL) | **Read / Write tools** (`query_model`, `operate_element`, …) |
 |---|---|---|
-| Who drives | **You** — click, filter, edit, drag-fill | **The AI** — call tools from chat |
+| Who drives | **You** — click, filter, edit, drag-fill, then Apply | **The AI** — call tools from chat |
+| Workflow | Human-in-the-loop: inspect → edit → confirm | Agent-driven: prompt → tool → result |
 | Best for | Scan a table, pick columns, tweak many instance params | Automation: “set all door Marks…”, scripted workflows |
 | Feedback | Live table in the client | JSON / text back in the conversation |
 
@@ -42,7 +45,7 @@ For “look at the list and fix parameters,” an App usually uses **far fewer c
 - App: Excel-like — fast for human review and batch tweaks after one open.
 - Tools: fewer wall-clock seconds for fully automatic, rule-clear jobs; slower when a person must describe every small edit in natural language.
 
-**Rule of thumb:** human-in-the-loop table work → MCP Apps; hands-off automation → tools. Opening the Schedule App then letting tools handle scripted follow-ups is a good combo.
+**Rule of thumb:** HITL table work → MCP Apps; hands-off automation → tools. Opening the Schedule App (HITL) then letting tools handle scripted follow-ups is a good combo.
 
 ### Revit 2027
 
