@@ -1,0 +1,162 @@
+{
+  "name": "RevitMCPCommandSet",
+  "description": "Basic command collection for Revit AI assistance",
+  "developer": {
+    "name": "mcp-servers-for-revit",
+    "email": "",
+    "website": "",
+    "organization": "mcp-servers-for-revit"
+  },
+  "commands": [
+    {
+      "commandName": "say_hello",
+      "description": "Displays a greeting dialog",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "get_available_family_types",
+      "description": "get available family types",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "get_current_view_elements",
+      "description": "get current view elements",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "get_current_view_info",
+      "description": "get current view info",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "get_selected_elements",
+      "description": "get selected elements",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "create_point_based_element",
+      "description": "Create point-based elements like furniture",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "create_line_based_element",
+      "description": "Create line based element such as wall",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "create_surface_based_element",
+      "description": "Create surface-based elements like floors",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "color_splash",
+      "description": "Color elements by parameter value",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "tag_walls",
+      "description": "Tag all the walls in the model",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "delete_element",
+      "description": "Deletes elements using ElementId",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "ai_element_filter",
+      "description": "AI element filter for querying elements by criteria",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "operate_element",
+      "description": "Operate on elements (select, color, hide, isolate, etc)",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "export_room_data",
+      "description": "Extract all rooms with detailed properties including area, volume, perimeter, and parameters",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "get_material_quantities",
+      "description": "Calculate material quantities and takeoffs with area and volume calculations per material",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "analyze_model_statistics",
+      "description": "Analyze model complexity with element counts by category, type, family, and level",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "create_grid",
+      "description": "Create grid system with smart spacing generation for project layout (alphabetic/numeric naming)",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "create_structural_framing_system",
+      "description": "Create structural beam framing system with configurable spacing and direction",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "create_room",
+      "description": "Create and place rooms at specified locations with custom names, numbers, and properties",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "tag_rooms",
+      "description": "Create tags for all rooms in the current view displaying room name and number",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "create_level",
+      "description": "Create levels at specified elevations with automatic floor plan view generation",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "send_code_to_revit",
+      "description": "Execute dynamic C# code in Revit with access to the Document and Revit API",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "create_dimensions",
+      "description": "Create dimension annotations between elements or points in the current view",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "query_model",
+      "description": "Query element Ids with category, name, level, bounding box, and parameter filters",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "get_element_data",
+      "description": "Get identity, bounding box, and parameter data for elements by Id",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "open_view",
+      "description": "Open a view and set it as the active view",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "zoom_to_elements",
+      "description": "Zoom the current view to specific elements",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "select_elements",
+      "description": "Select elements by Id in the active view",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "export_views",
+      "description": "Export views to PNG, JPG, BMP, TIFF, PDF, or schedules to CSV",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    },
+    {
+      "commandName": "get_running_revit_instances",
+      "description": "Return the connected Revit process Id and open document",
+      "assemblyPath": "RevitMCPCommandSet.dll"
+    }
+  ]
+}
