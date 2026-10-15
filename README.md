@@ -1,4 +1,6 @@
-﻿# Revit MCP Server Apps
+﻿https://github.com/user-attachments/assets/c78d5b4f-2710-4c97-813f-fe2e3e29d17c
+
+# Revit MCP Server Apps
 
 Based on [mcp-servers-for-revit](https://github.com/mcp-servers-for-revit/mcp-servers-for-revit).
 
