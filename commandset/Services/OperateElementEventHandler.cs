@@ -336,7 +336,7 @@ namespace RevitMCPCommandSet.Services
                             var element = doc.GetElement(id);
                             if (element == null)
                             {
-                                skipped.Add($"{id.Value}: not found");
+                                skipped.Add($"{id.GetValue()}: not found");
                                 continue;
                             }
 
@@ -344,7 +344,7 @@ namespace RevitMCPCommandSet.Services
                             {
                                 if (!element.IsValidType(typeId))
                                 {
-                                    skipped.Add($"{id.Value}: type not valid for this element");
+                                    skipped.Add($"{id.GetValue()}: type not valid for this element");
                                     continue;
                                 }
 
@@ -353,7 +353,7 @@ namespace RevitMCPCommandSet.Services
                             }
                             catch (Exception ex)
                             {
-                                skipped.Add($"{id.Value}: {ex.Message}");
+                                skipped.Add($"{id.GetValue()}: {ex.Message}");
                             }
                         }
                         trans.Commit();
@@ -383,24 +383,24 @@ namespace RevitMCPCommandSet.Services
                             var element = doc.GetElement(id);
                             if (element == null)
                             {
-                                skipped.Add($"{id.Value}: not found");
+                                skipped.Add($"{id.GetValue()}: not found");
                                 continue;
                             }
 
                             var parameter = PublicMcpUtils.FindParameter(element, setting.ParameterName);
                             if (parameter == null)
                             {
-                                skipped.Add($"{id.Value}: parameter '{setting.ParameterName}' not found");
+                                skipped.Add($"{id.GetValue()}: parameter '{setting.ParameterName}' not found");
                                 continue;
                             }
                             if (!PublicMcpUtils.IsEditableInstanceParameter(parameter))
                             {
-                                skipped.Add($"{id.Value}: parameter '{setting.ParameterName}' is not editable");
+                                skipped.Add($"{id.GetValue()}: parameter '{setting.ParameterName}' is not editable");
                                 continue;
                             }
                             if (!PublicMcpUtils.TrySetParameterValue(parameter, setting.ParameterValue, out var setError))
                             {
-                                skipped.Add($"{id.Value}: {setError}");
+                                skipped.Add($"{id.GetValue()}: {setError}");
                                 continue;
                             }
                             changed++;
