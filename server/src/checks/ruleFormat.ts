@@ -76,7 +76,9 @@ export const RuleSchema = z.object({
     categories: z
       .array(z.string().regex(/^OST_\w+$/, "Categories must be BuiltInCategory names such as OST_Doors"))
       .min(1, "At least one category is required"),
-    elementKind: z.enum(["instance", "type", "any"]),
+    elementKind: z
+      .enum(["instance", "type", "any"])
+      .refine((kind) => kind !== "type", 'Type-level rules are not supported yet — use "any" (type parameters are already read for every element)'),
     where: z.array(ConditionSchema).default([]),
   }),
   require: z.array(ConditionSchema).min(1, "At least one required condition is needed"),

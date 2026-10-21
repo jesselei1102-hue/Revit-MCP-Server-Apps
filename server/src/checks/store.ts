@@ -111,6 +111,11 @@ function rowToRule(row: RuleRow): StoredRule {
 export function createCheckStore(db: Database.Database) {
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
+  // A run still "running" when the store opens was cut off by a server restart; it will never finish.
+  db.prepare("UPDATE check_runs SET status = 'failed', error = ?, finished_at = ? WHERE status = 'running'").run(
+    "Interrupted: the server stopped during this run",
+    Date.now()
+  );
 
   const insertRule = db.prepare(
     `INSERT INTO rules (id, ruleset_id, grp, name, severity, enabled, supported, unsupported_reason, body, updated_at)
@@ -138,7 +143,8 @@ export function createCheckStore(db: Database.Database) {
 
   const importRuleset = db.transaction(
     (set: { id: string; name: string; sourceKind: string; sourceFile?: string }, rules: ImportedRule[]) => {
-      db.prepare("DELETE FROM rulesets WHERE id = ? OR name = ?").run(set.id, set.name);
+      // Same name = same rule set (replaced). Ids are derived from the name, so they follow.
+      db.prepare("DELETE FROM rulesets WHERE name = ? OR id = ?").run(set.name, set.id);
       db.prepare(
         "INSERT INTO rulesets (id, name, source_kind, source_file, imported_at, enabled) VALUES (?, ?, ?, ?, ?, 1)"
       ).run(set.id, set.name, set.sourceKind, set.sourceFile ?? null, Date.now());

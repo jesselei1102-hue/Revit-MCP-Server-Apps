@@ -31,6 +31,7 @@ describe("validateRules", () => {
     ["category without OST_", { ...validRule, scope: { ...validRule.scope, categories: ["Doors"] } }],
     ["empty categories", { ...validRule, scope: { ...validRule.scope, categories: [] } }],
     ["bad severity", { ...validRule, severity: "fatal" }],
+    ["type element kind", { ...validRule, scope: { ...validRule.scope, elementKind: "type" } }],
   ])("rejects %s with its index", (_label, bad) => {
     const { ok, errors } = validateRules([validRule, bad]);
     expect(ok).toHaveLength(1);

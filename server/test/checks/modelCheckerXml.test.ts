@@ -10,11 +10,11 @@ describe("parseModelCheckerXml", () => {
 
   it("reads the checkset name and keeps document order", () => {
     expect(parsed.name).toBe('Mini "IFC" checks');
-    expect(parsed.rules.map((r) => r.id)).toEqual(["c1", "c3", "c2"]);
+    expect(parsed.rules.map((r) => r.id)).toEqual(["mini:c1", "mini:c3", "mini:c2"]);
   });
 
   it("maps FailNoElements + Defined to a per-element required parameter", () => {
-    const r = parsed.rules.find((x) => x.id === "c1")!;
+    const r = parsed.rules.find((x) => x.id === "mini:c1")!;
     expect(r.supported).toBe(true);
     expect(r.enabled).toBe(true);
     expect(r.group).toBe("IFC-SG / Architecture (ARC) / Doors");
@@ -31,7 +31,7 @@ describe("parseModelCheckerXml", () => {
   });
 
   it("maps CountAndList + HasNoValue to a hasValue requirement", () => {
-    const r = parsed.rules.find((x) => x.id === "c2")!;
+    const r = parsed.rules.find((x) => x.id === "mini:c2")!;
     expect(r.supported).toBe(true);
     expect(r.group).toBe("IFC-SG / Architecture (ARC) / Export to IFC As");
     expect(r.scope).toEqual({ categories: ["OST_Doors"], elementKind: "any", where: [] });
@@ -39,7 +39,7 @@ describe("parseModelCheckerXml", () => {
   });
 
   it("imports unsupported shapes disabled, with a reason", () => {
-    const r = parsed.rules.find((x) => x.id === "c3")!;
+    const r = parsed.rules.find((x) => x.id === "mini:c3")!;
     expect(r.supported).toBe(false);
     expect(r.enabled).toBe(false);
     expect(r.unsupportedReason).toMatch(/Or/);
@@ -75,11 +75,20 @@ describe("duplicate checks across headings", () => {
         .replace(/ID="c(\d)"/g, 'ID="old-c$1"') + "\n</MCSettings>"
     );
     const parsed = parseModelCheckerXml(twice, { rulesetId: "dup" });
-    const old = parsed.rules.find((r) => r.id === "old-c1")!;
+    const old = parsed.rules.find((r) => r.id === "dup:old-c1")!;
     expect(old.group).toBe("Older / Architecture (ARC) / Doors");
     expect(old.supported).toBe(true);
     expect(old.enabled).toBe(false);
     expect(old.description).toMatch(/IFC-SG/);
-    expect(parsed.rules.find((r) => r.id === "c1")!.enabled).toBe(true);
+    expect(parsed.rules.find((r) => r.id === "dup:c1")!.enabled).toBe(true);
+  });
+});
+
+describe("type-level checks", () => {
+  it("imports checks on element types as unsupported", () => {
+    const typed = mini.replace('Property="Is Element Type" Condition="Equal" Value="False"', 'Property="Is Element Type" Condition="Equal" Value="True"');
+    const r = parseModelCheckerXml(typed, { rulesetId: "t" }).rules.find((x) => x.id === "t:c1")!;
+    expect(r.supported).toBe(false);
+    expect(r.unsupportedReason).toMatch(/type/i);
   });
 });

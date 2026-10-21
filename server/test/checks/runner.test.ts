@@ -40,6 +40,17 @@ function sendWith(opts: { failCategories?: string[] } = {}): Send {
 }
 
 describe("runChecks", () => {
+  it("skips linked counts once Revit stops answering", async () => {
+    const { store } = setup();
+    const commands: string[] = [];
+    const base = sendWith({ failCategories: ["OST_Doors"] });
+    const send: Send = async (c, p) => (commands.push(c), base(c, p));
+    const { runId, done } = await runChecks({ store, send }, {});
+    await done;
+    expect(commands.filter((c) => c === "query_model")).toEqual([]);
+    expect(store.getRun(runId)!.status).toBe("failed");
+  });
+
   it("runs, stores results and summarises the model", async () => {
     const { store } = setup();
     const { runId, done } = await runChecks({ store, send: sendWith() }, {});

@@ -118,6 +118,13 @@ describe("check store", () => {
     expect(trend[trend.length - 1].passedPct).toBe(92);
   });
 
+  it("marks runs left running by a previous server as interrupted", () => {
+    const first = createCheckStore(db);
+    const runId = first.startRun(first.findOrCreateProject("P", "p.rvt"));
+    const second = createCheckStore(db);
+    expect(second.getRun(runId)).toMatchObject({ status: "failed", error: expect.stringMatching(/Interrupted/) });
+  });
+
   it("exposes progress while a run is in flight", () => {
     const store = createCheckStore(db);
     const runId = store.startRun(store.findOrCreateProject("P", "p.rvt"));

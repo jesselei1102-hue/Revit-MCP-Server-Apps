@@ -78,6 +78,39 @@ describe("check tools", () => {
     expect(res.structuredContent).toMatchObject({ rules: 3, unsupported: 1 });
   });
 
+  it("keeps rule sets with non-Latin names apart and toggles them independently", async () => {
+    await call("rules_import_checkset", { xml: mini, name: "防火检查" });
+    await call("rules_import_checkset", { xml: mini, name: "节能检查" });
+    const full = (await call("rules_list", { detail: "full" })).structuredContent.rulesets;
+    expect(full.map((s: any) => s.name).sort()).toEqual(["节能检查", "防火检查"]);
+    const [a, b] = full;
+    const ruleA = a.rules.find((r: any) => r.supported && r.enabled);
+    await call("rules_set_enabled", { ids: [ruleA.id], enabled: false });
+    const after = (await call("rules_list", { detail: "full" })).structuredContent.rulesets;
+    expect(after.find((s: any) => s.id === a.id).rules.find((r: any) => r.name === ruleA.name).enabled).toBe(false);
+    expect(after.find((s: any) => s.id === b.id).rules.find((r: any) => r.name === ruleA.name).enabled).toBe(true);
+  });
+
+  it("survives a storage failure while a background run finishes", async () => {
+    const db2 = new Database(":memory:");
+    db2.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, project_name TEXT NOT NULL, project_path TEXT,
+      timestamp INTEGER NOT NULL, last_updated INTEGER NOT NULL)`);
+    const real = createCheckStore(db2);
+    real.upsertRules([{ id: "r", rulesetId: "mine", group: "Doors", name: "n", severity: "warning", enabled: true,
+      scope: { categories: ["OST_Doors"], elementKind: "any", where: [] }, require: [{ param: "Mark", op: "hasValue" }], source: { kind: "claude" } }]);
+    const broken = { ...real, finishRun: () => { throw new Error("disk full"); } };
+    const server = new McpServer({ name: "t", version: "0" });
+    await registerCheckTools(server, { store: broken as any, send });
+    const [x, y] = InMemoryTransport.createLinkedPair();
+    const c2 = new Client({ name: "c", version: "0" });
+    await Promise.all([server.connect(x), c2.connect(y)]);
+    const res = (await c2.callTool({ name: "checks_run", arguments: { wait: false } })) as any;
+    expect(res.isError).toBeFalsy();
+    await new Promise((r) => setTimeout(r, 50));
+    const again = (await c2.callTool({ name: "checks_run", arguments: { wait: false } })) as any;
+    expect(again.content[0].text).not.toMatch(/already in progress/);
+  });
+
   it("needs a target to enable or disable", async () => {
     expect((await call("rules_set_enabled", { enabled: false })).isError).toBe(true);
   });

@@ -1,4 +1,5 @@
 import * as net from "net";
+import { StringDecoder } from "string_decoder";
 
 export class RevitClientConnection {
   host: string;
@@ -7,6 +8,7 @@ export class RevitClientConnection {
   isConnected: boolean = false;
   responseCallbacks: Map<string, (response: string) => void> = new Map();
   buffer: string = "";
+  private decoder = new StringDecoder("utf8");
 
   constructor(host: string, port: number) {
     this.host = host;
@@ -22,7 +24,8 @@ export class RevitClientConnection {
 
     this.socket.on("data", (data) => {
       // 将接收到的数据添加到缓冲区
-      const dataString = data.toString();
+      // StringDecoder keeps a multi-byte UTF-8 character (e.g. CJK) intact when it spans two chunks.
+      const dataString = typeof data === "string" ? data : this.decoder.write(data);
       this.buffer += dataString;
 
       // 尝试解析完整的JSON响应
