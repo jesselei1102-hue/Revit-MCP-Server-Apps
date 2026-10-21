@@ -9,6 +9,8 @@ type ToolResult = {
 };
 
 type ScheduleData = {
+  /** "summary" when the agent opened the app: counts only, the rows are loaded with detail "full". */
+  detail?: "summary";
   columns?: string[];
   rows?: Record<string, string>[];
   matchedCount?: number;
@@ -409,6 +411,7 @@ function scheduleArgs(extra?: Record<string, unknown>) {
     ...lastArgs,
     ...extra,
     parametersOutputType: "EditableInstanceParameters",
+    detail: "full",
   };
 }
 
@@ -1127,7 +1130,7 @@ function render() {
   renderChips();
 
   if (allRows.length === 0) {
-    table.innerHTML = `<div class="empty"><b>No elements loaded</b><span>Ask Claude to load a schedule, or reload from Revit.</span></div>`;
+    table.innerHTML = `<div class="empty"><b>No elements loaded</b><span>Ask the agent to load a schedule, or reload from Revit.</span></div>`;
     syncDock();
     return;
   }
@@ -2177,6 +2180,11 @@ app.ontoolinput = (params) => {
 
 app.ontoolresult = (result) => {
   const typed = result as ToolResult;
+  const structured = typed.structuredContent;
+  if (structured && !Array.isArray(structured) && structured.detail === "summary") {
+    void reloadSchedule("Loading elements…");
+    return;
+  }
   parseSchedule(dataFromResult(typed), textFromResult(typed));
   // Upgrade to editable instance params when the agent loaded computed KeyParameters / None.
   if (lastArgs.parametersOutputType !== "EditableInstanceParameters") {

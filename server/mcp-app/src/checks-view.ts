@@ -1,4 +1,4 @@
-// 03 Checks (rule sets, toggles, import, ask Claude) and 04 Dashboard (read-only results) on the
+// 03 Checks (rule sets, toggles, import, ask agent) and 04 Dashboard (read-only results) on the
 // rules_* / checks_* server tools. mcp-app.ts owns the tabs and the dock; this module owns the two panels.
 import type { App } from "@modelcontextprotocol/ext-apps";
 import { createChecksApi, type ResultsView, type RuleView, type RulesetView, type Severity } from "./checks-api";
@@ -69,7 +69,7 @@ export function createChecksView(deps: Deps) {
 
   async function show(panel: "checks" | "dashboard") {
     activePanel = panel;
-    renderActive(); // cached data first, then fresh: rules or runs may come from Claude meanwhile
+    renderActive(); // cached data first, then fresh: rules or runs may come from the agent meanwhile
     await refresh();
   }
 
@@ -130,7 +130,7 @@ export function createChecksView(deps: Deps) {
     const supported = set.rules.filter((r) => r.supported);
     const unsupported = set.rules.filter((r) => !r.supported);
     const on = supported.filter((r) => r.enabled).length;
-    const source = set.sourceKind === "model-checker-xml" ? "xml" : "created with Claude";
+    const source = set.sourceKind === "model-checker-xml" ? "xml" : "created by agent";
     let html = `<div class="card"><div class="card-head"><span><b>${esc(set.name)}</b> <span class="dim">· ${set.rules.length} rules · ${on} on · ${source}</span></span><button type="button" class="tog" role="switch" aria-checked="${set.enabled}" aria-label="${esc(
       set.name
     )} enabled" data-act="set" data-set="${esc(set.id)}"></button></div><div class="rows">`;
@@ -175,11 +175,11 @@ export function createChecksView(deps: Deps) {
     let html = `<div class="lab"><span>rule sets</span><span><input type="file" id="import-xml" accept=".xml,text/xml" hidden /><button type="button" class="text-link" data-act="import">import xml</button></span></div>`;
     if (!loaded) html += `<div class="empty"><b>Loading rules…</b><span>Reading rule sets from the server.</span></div>`;
     else if (rulesets.length === 0) {
-      html += `<div class="empty"><b>No rules yet</b><span>Import a Model Checker checkset (such as IFC-SG), or describe a rule below and Claude will create it.</span></div>`;
+      html += `<div class="empty"><b>No rules yet</b><span>Import a Model Checker checkset (such as IFC-SG), or describe a rule below and the agent will create it.</span></div>`;
     } else html += rulesets.map(setCard).join("");
     html += `<div class="lab"><span>create a rule</span></div>
       <label class="ask"><input id="rule-ask" type="text" placeholder='Describe it — "every room needs a Department"' autocomplete="off" />
-      <button type="button" class="text-link" data-act="ask">ask claude ↗</button></label>`;
+      <button type="button" class="text-link" data-act="ask">ask agent ↗</button></label>`;
     deps.checksView.innerHTML = html;
   }
 
@@ -216,7 +216,7 @@ export function createChecksView(deps: Deps) {
         (deps.checksView.querySelector("#import-xml") as HTMLInputElement | null)?.click();
         return;
       case "ask":
-        void askClaude();
+        void askAgent();
         return;
       case "set":
         if (set) void act(() => api.setEnabled({ rulesetId: set.id }, !set.enabled), `${set.name} ${set.enabled ? "off" : "on"}`);
@@ -265,7 +265,7 @@ export function createChecksView(deps: Deps) {
     }
   });
 
-  async function askClaude() {
+  async function askAgent() {
     const input = deps.checksView.querySelector("#rule-ask") as HTMLInputElement | null;
     const description = input?.value.trim() ?? "";
     if (!description) {
@@ -277,10 +277,10 @@ export function createChecksView(deps: Deps) {
     try {
       if (deps.app.getHostCapabilities()?.message) {
         await deps.app.sendMessage({ role: "user", content: [{ type: "text", text: prompt }] });
-        deps.setStatus("Sent to Claude — the rule appears here once it's created (reopen 03 or press reload)");
+        deps.setStatus("Sent to the agent — the rule appears here once it's created (reopen 03 or press reload)");
       } else {
         await navigator.clipboard.writeText(prompt);
-        deps.setStatus("Copied — paste it to Claude");
+        deps.setStatus("Copied — paste it to your agent");
       }
       if (input) input.value = "";
     } catch (error) {
