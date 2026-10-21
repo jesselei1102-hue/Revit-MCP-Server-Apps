@@ -82,6 +82,29 @@ describe("check tools", () => {
     expect((await call("rules_set_enabled", { enabled: false })).isError).toBe(true);
   });
 
+  it("keeps structured results small for the model unless the app asks for detail", async () => {
+    await call("rules_import_checkset", { xml: mini });
+    await call("rules_upsert", { rules: Array.from({ length: 60 }, (_, i) => ({ ...goodRule, name: `Doors need Mark ${i}` })) });
+    const run = await call("checks_run", {});
+    expect(run.structuredContent.results).toBeUndefined();
+    expect(JSON.stringify(run.structuredContent).length).toBeLessThan(20000);
+
+    const brief = await call("checks_get_results", {});
+    expect(brief.structuredContent.results).toBeUndefined();
+    expect(brief.structuredContent.fixes.length).toBeLessThanOrEqual(10);
+    expect(brief.structuredContent.fixes[0].byType).toBeUndefined();
+    expect(JSON.stringify(brief.structuredContent).length).toBeLessThan(20000);
+    const full = await call("checks_get_results", { detail: "full" });
+    expect(full.structuredContent.results.length).toBe(62); // 60 mine + 2 runnable mini checks
+
+    const listBrief = await call("rules_list", {});
+    const mine = listBrief.structuredContent.rulesets.find((s: any) => s.id === "mine");
+    expect(mine).toMatchObject({ rules: 60, enabledRules: 60 });
+    expect(mine.groups).toEqual([{ group: "Doors", rules: 60, enabled: 60 }]);
+    const listFull = await call("rules_list", { detail: "full" });
+    expect(listFull.structuredContent.rulesets.find((s: any) => s.id === "mine").rules).toHaveLength(60);
+  });
+
   it("runs checks and keeps the model-facing summary short", async () => {
     await call("rules_upsert", { rules: Array.from({ length: 40 }, (_, i) => ({ ...goodRule, name: `Doors need Mark ${i} ${"x".repeat(80)}` })) });
     const run = await call("checks_run", {});

@@ -22,8 +22,11 @@ const time = (ms: number | null) => (ms ? new Date(ms).toTimeString().slice(0, 5
 const defaultSend: Send = (command, params) =>
   withRevitConnection((client) => client.sendCommand(command, params as Record<string, unknown>));
 
-/** Everything the dashboard needs for one run, plus a short summary for the model. */
-function resultsPayload(store: CheckStore, run: StoredRun) {
+/**
+ * One run for the model ("summary": counts, top fixes, trend — a few KB) or for the dashboard ("full": every rule
+ * result). Hosts pass structuredContent to the model too, so the model-facing default must stay small.
+ */
+function resultsPayload(store: CheckStore, run: StoredRun, detail: "summary" | "full" = "summary") {
   const meta = new Map(
     store.listRulesets().flatMap((s) => s.rules.map((r) => [r.id, { name: r.name, group: r.group, severity: r.severity, rulesetId: s.id }] as const))
   );
@@ -52,13 +55,19 @@ function resultsPayload(store: CheckStore, run: StoredRun) {
       "Details are in the 04 Dashboard tab of the Schedule app.",
     ].join("\n");
   }
+  const runInfo = { id: run.id, status: run.status, startedAt: run.startedAt, finishedAt: run.finishedAt, error: run.error, progress: s?.progress ?? null };
+  if (detail === "full") {
+    return { content: text(summary), structuredContent: { run: runInfo, summary: s, results, fixes, trend } };
+  }
+  const brief = s
+    ? { rules: s.rules, bySeverity: s.bySeverity, elementsChecked: s.elementsChecked, ...(s.progress ? { progress: s.progress } : {}) }
+    : null;
   return {
     content: text(summary),
     structuredContent: {
-      run: { id: run.id, status: run.status, startedAt: run.startedAt, finishedAt: run.finishedAt, error: run.error, progress: s?.progress ?? null },
-      summary: s,
-      results,
-      fixes,
+      run: runInfo,
+      summary: brief,
+      fixes: fixes.slice(0, 10).map(({ byType: _t, ...f }) => f),
       trend,
     },
   };
@@ -136,26 +145,49 @@ export async function registerCheckTools(server: McpServer, deps: { store?: Chec
     "rules_list",
     {
       title: "List check rules",
-      description: "List rule sets, their groups and rules (enabled state, support status).",
+      description:
+        "List rule sets with per-group counts. Pass a rulesetId and group to see that group's rules; detail \"full\" returns every rule (used by the Schedule app).",
       inputSchema: {
         rulesetId: z.string().optional(),
         group: z.string().optional(),
+        detail: z.enum(["summary", "full"]).optional(),
       },
     },
-    async ({ rulesetId, group }) => {
+    async ({ rulesetId, group, detail }) => {
       const sets = store()
         .listRulesets()
         .filter((s) => !rulesetId || s.id === rulesetId)
         .map((s) => ({ ...s, rules: s.rules.filter((r) => !group || r.group === group) }));
+      // Rule bodies only when asked for (the app) or when narrowed to one group (the model drilling down).
+      const withRules = detail === "full" || (rulesetId != null && group != null);
       const lines = sets.map((s) => {
         const groups = new Set(s.rules.map((r) => r.group)).size;
         const on = s.rules.filter((r) => r.enabled && r.supported).length;
         const unsupported = s.rules.filter((r) => !r.supported).length;
         return `- ${s.name} (${s.id})${s.enabled ? "" : " [off]"}: ${s.rules.length} rules in ${groups} groups, ${on} enabled, ${unsupported} unsupported`;
       });
+      const brief = sets.map((s) => {
+        const groups = new Map<string, { group: string; rules: number; enabled: number }>();
+        for (const r of s.rules) {
+          const g = groups.get(r.group) ?? { group: r.group, rules: 0, enabled: 0 };
+          g.rules++;
+          if (r.enabled && r.supported) g.enabled++;
+          groups.set(r.group, g);
+        }
+        return {
+          id: s.id,
+          name: s.name,
+          sourceKind: s.sourceKind,
+          enabled: s.enabled,
+          rules: s.rules.length,
+          enabledRules: s.rules.filter((r) => r.enabled && r.supported).length,
+          unsupported: s.rules.filter((r) => !r.supported).length,
+          groups: [...groups.values()],
+        };
+      });
       return {
         content: text(sets.length ? lines.join("\n") : "No rule sets yet. Import a checkset or create rules."),
-        structuredContent: { rulesets: sets },
+        structuredContent: { rulesets: withRules ? sets : brief },
       };
     }
   );
@@ -215,10 +247,11 @@ export async function registerCheckTools(server: McpServer, deps: { store?: Chec
     "checks_get_results",
     {
       title: "Get model check results",
-      description: "Latest check run for the open model (or a given runId): progress while running, then summary, per-rule results, ranked fixes and the trend of recent runs.",
-      inputSchema: { runId: z.number().int().optional() },
+      description:
+        "Latest check run for the open model (or a given runId): progress while running, then a summary, the top fixes and the trend of recent runs. detail \"full\" adds every rule result and dashboard statistics (used by the Schedule app).",
+      inputSchema: { runId: z.number().int().optional(), detail: z.enum(["summary", "full"]).optional() },
     },
-    async ({ runId }) => {
+    async ({ runId, detail }) => {
       let run: StoredRun | null = null;
       if (runId != null) run = store().getRun(runId);
       else {
@@ -230,7 +263,7 @@ export async function registerCheckTools(server: McpServer, deps: { store?: Chec
         }
       }
       if (!run) return { content: text("No check runs yet for this model. Run checks_run."), structuredContent: { run: null } };
-      return resultsPayload(store(), run);
+      return resultsPayload(store(), run, detail ?? "summary");
     }
   );
 }
