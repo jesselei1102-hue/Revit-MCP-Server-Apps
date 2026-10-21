@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { registerCheckTools } from "./checks/tools.js";
 import { registerMcpApp } from "./mcpApp.js";
 import { registerTools } from "./tools/register.js";
 
@@ -20,6 +21,7 @@ async function main() {
   // 注册工具
   await registerTools(server);
   await registerMcpApp(server);
+  await registerCheckTools(server);
 
   // 连接到传输层
   const transport = new StdioServerTransport();
