@@ -506,22 +506,98 @@
     .change .remove { width: 26px; height: 26px; border-radius: 99px; display: inline-flex; align-items: center; justify-content: center; color: var(--tx3); }
     .change .remove:hover { color: var(--tx); background: var(--s1); }
 
-    .checks-empty { padding: 44px 20px; text-align: center; color: var(--tx2); }
-    .checks-empty svg { width: 40px; height: 40px; margin-bottom: 10px; }
-    .checks-empty .ring { stroke: var(--line2); fill: none; }
-    .checks-empty .dot { fill: var(--accent); }
-    .checks-empty b { display: block; font-weight: 400; color: var(--tx); margin-bottom: 4px; }
-    .checks-empty span { font-size: 12px; }
-    .soon {
-      display: inline-block;
-      margin-top: 12px;
+    /* ---------- Checks (03) + Dashboard (04) ---------- */
+    .view { padding: 14px 20px 6px; display: flex; flex-direction: column; gap: 10px; }
+    .lab {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
       font-family: var(--mono);
       font-size: 11px;
-      padding: 3px 10px;
+      color: var(--tx3);
+      margin-top: 6px;
+    }
+    .card { border: 0.5px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+    .card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .card-head b { font-weight: 500; }
+    .dim { font-family: var(--mono); font-size: 11px; color: var(--tx3); }
+    .fail-tx { font-family: var(--mono); font-size: 11px; color: var(--danger); }
+    .rows { margin-top: 6px; }
+    .line {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 7px 0;
+      border-bottom: 0.5px solid var(--line);
+    }
+    .line:last-child { border-bottom: 0; }
+    .line > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .line .glyph { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.4; vertical-align: -1px; margin-right: 6px; color: var(--tx2); }
+    .sev { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 7px; vertical-align: middle; background: var(--tx3); }
+    .sev.error { background: var(--danger); }
+    .sev.warning { background: var(--accent); box-shadow: var(--glow); }
+    .tog {
+      position: relative;
+      flex: 0 0 auto;
+      width: 28px;
+      height: 16px;
+      border-radius: 99px;
+      background: var(--line2);
+      transition: background 0.15s;
+    }
+    .tog::after {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--tx3);
+      transition: transform 0.15s, background 0.15s;
+    }
+    .tog[aria-checked="true"] { background: var(--accent); box-shadow: var(--glow); }
+    .tog[aria-checked="true"]::after { transform: translateX(12px); background: var(--on-accent); }
+    .ask {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 0.5px solid var(--line2);
+      color: var(--tx3);
+    }
+    .ask:focus-within { border-bottom-color: var(--accent); }
+    .ask input { flex: 1 1 auto; min-width: 0; font: inherit; color: var(--tx); background: transparent; border: 0; outline: none; padding: 7px 0; }
+    .ask input::placeholder { color: var(--tx3); }
+    .sample {
+      font-family: var(--mono);
+      font-size: 10px;
+      padding: 1px 7px;
       border-radius: 99px;
       border: 0.5px dashed var(--line2);
       color: var(--tx3);
+      white-space: nowrap;
     }
+    .notice {
+      font-size: 12px;
+      color: var(--tx2);
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: var(--accent-soft);
+    }
+    .kpis { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 10px; }
+    .big { font-family: var(--mono); font-size: 34px; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+    .delta { font-family: var(--mono); font-size: 11px; color: var(--accent-tx); }
+    .spark { display: block; width: 100%; height: 34px; margin-top: 6px; }
+    .spark polyline { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+    .meter { display: flex; align-items: center; gap: 8px; width: 44vw; max-width: 220px; }
+    .bar { flex: 1 1 auto; height: 4px; border-radius: 99px; background: var(--line2); overflow: hidden; }
+    .bar i { display: block; height: 100%; background: var(--accent); }
+    .meter .pct { font-family: var(--mono); font-size: 11px; width: 34px; text-align: right; color: var(--tx2); }
+    .fix b { font-weight: 500; }
+    .fix p { color: var(--tx2); margin-top: 4px; font-size: 12px; }
+    @media (max-width: 560px) { .kpis { grid-template-columns: minmax(0, 1fr); } }
 
     /* ---------- Dock ---------- */
     .dock {
@@ -614,7 +690,10 @@
         <span class="n">02</span>Changes <span class="tab-count" id="tab-count-changes"></span>
       </button>
       <button class="tab" type="button" role="tab" data-tab="checks" aria-selected="false">
-        <span class="n">03</span>Checks
+        <span class="n">03</span>Checks <span class="tab-count" id="tab-count-checks"></span>
+      </button>
+      <button class="tab" type="button" role="tab" data-tab="dashboard" aria-selected="false">
+        <span class="n">04</span>Dashboard
       </button>
     </nav>
 
@@ -659,19 +738,19 @@
     </section>
 
     <section class="panel" id="panel-checks" role="tabpanel" hidden>
-      <div class="checks-empty">
-        <svg viewBox="0 0 40 40" aria-hidden="true">
-          <circle class="ring" cx="17" cy="20" r="13" stroke-width="1.2" />
-          <circle class="dot" cx="28" cy="20" r="6" />
-        </svg>
-        <b>Check your model against rules</b>
-        <span>Import a rule set, such as IFC-SG, to flag elements that fail.</span><br />
-        <span class="soon">coming soon</span>
-      </div>
+      <div class="view" id="checks-view"></div>
+    </section>
+
+    <section class="panel" id="panel-dashboard" role="tabpanel" hidden>
+      <div class="view" id="dashboard-view"></div>
     </section>
 
     <footer class="dock">
-      <div class="dock-group">
+      <div class="dock-group" id="dock-checks" hidden>
+        <span class="count" id="checks-dock-label"></span>
+        <button class="db pri" type="button" id="btn-run-checks">Run checks →</button>
+      </div>
+      <div class="dock-group" id="dock-select">
         <span class="count" id="sel-count">0 in view</span>
         <button class="db" type="button" id="btn-show" title="Select and zoom in Revit">Show in Revit</button>
         <button class="db" type="button" id="btn-isolate" title="Isolate, select and zoom in Revit">Isolate</button>

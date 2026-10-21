@@ -1,4 +1,5 @@
 import { App, applyDocumentTheme, applyHostFonts } from "@modelcontextprotocol/ext-apps";
+import { createMockRulesets, MOCK_RESULTS, type Severity } from "./checks-mock";
 
 type TextContent = { type: string; text?: string };
 type ToolResult = {
@@ -32,7 +33,7 @@ type FilterState = {
 
 type ShowMode = "select" | "isolate";
 type Theme = "light" | "dark";
-type TabName = "elements" | "changes" | "checks";
+type TabName = "elements" | "changes" | "checks" | "dashboard";
 
 type FamilyTypeInfo = {
   FamilyTypeId?: number;
@@ -224,6 +225,8 @@ let paramPickerSearch = "";
 let paramPickerInitialized = false;
 let showAllCategories = false;
 let activeTab: TabName = "elements";
+/** Mockup state for 03 Checks (sample rule sets; toggles are local only until the checks engine lands). */
+const mockRulesets = createMockRulesets();
 let busy = false;
 let dashboardStats: ScheduleData["dashboard"] | undefined;
 let hostTheme: Theme | undefined;
@@ -273,6 +276,13 @@ const btnTheme = $<HTMLButtonElement>("btn-theme");
 const themeIconSun = $("theme-icon-sun");
 const themeIconMoon = $("theme-icon-moon");
 const dockPending = $("dock-pending");
+const dockSelect = $("dock-select");
+const dockChecks = $("dock-checks");
+const checksDockLabel = $("checks-dock-label");
+const btnRunChecks = $<HTMLButtonElement>("btn-run-checks");
+const tabCountChecks = $("tab-count-checks");
+const checksView = $("checks-view");
+const dashboardView = $("dashboard-view");
 const pendingLabel = $("pending-label");
 const btnDiscard = $<HTMLButtonElement>("btn-discard");
 const btnApply = $<HTMLButtonElement>("btn-apply");
@@ -1353,7 +1363,14 @@ function syncDock() {
   btnIsolate.disabled = busy || ids.length === 0;
   btnResetView.disabled = busy || allRows.length === 0;
 
-  dockPending.hidden = pending === 0;
+  // 01/02 dock: selection + Apply. 03/04 dock: Run checks (one primary button per view).
+  const checksTab = activeTab === "checks" || activeTab === "dashboard";
+  const rulesOn = enabledMockRuleCount();
+  dockSelect.hidden = checksTab;
+  dockPending.hidden = checksTab || pending === 0;
+  dockChecks.hidden = !checksTab;
+  tabCountChecks.textContent = String(rulesOn);
+  checksDockLabel.textContent = `${rulesOn} rules on · last run ${MOCK_RESULTS.lastRun}`;
   pendingLabel.textContent = `${pending} unsaved`;
   btnApply.textContent = `Apply ${pending} →`;
   btnApply.disabled = busy;
@@ -1380,8 +1397,167 @@ function setTab(tab: TabName) {
   $("panel-elements").hidden = tab !== "elements";
   $("panel-changes").hidden = tab !== "changes";
   $("panel-checks").hidden = tab !== "checks";
+  $("panel-dashboard").hidden = tab !== "dashboard";
   closeTypeMenu();
   if (tab === "changes") renderChanges();
+  if (tab === "checks") renderChecks();
+  if (tab === "dashboard") renderDashboard();
+  syncDock();
+}
+
+// ---------------------------------------------------------------------------
+// 03 Checks + 04 Dashboard — MOCKUP on sample data (checks-mock.ts).
+// Phase 2 swaps the sample data for the rules_* / checks_* server tools.
+// ---------------------------------------------------------------------------
+
+const PHASE_2 = "arrives with the checks engine (phase 2)";
+
+function enabledMockRuleCount(): number {
+  let n = 0;
+  for (const set of mockRulesets) {
+    if (!set.enabled) continue;
+    if (set.items.length) n += set.items.filter((r) => r.enabled).length;
+    else n += set.rules - set.groups.filter((g) => !g.enabled).reduce((sum, g) => sum + g.rules, 0);
+  }
+  return n;
+}
+
+function toggleHtml(attr: string, on: boolean, label: string) {
+  return `<button type="button" class="tog" role="switch" aria-checked="${on}" aria-label="${escapeHtml(label)}" ${attr}></button>`;
+}
+
+function severityDot(severity: Severity) {
+  return `<i class="sev ${severity}" aria-hidden="true"></i>`;
+}
+
+function renderChecks() {
+  let html = `<div class="lab"><span>rule sets</span><button type="button" class="text-link" data-mock="import">import xml</button></div>`;
+  for (const set of mockRulesets) {
+    const source = set.source === "xml" ? "xml" : "created with Claude";
+    html += `<div class="card"><div class="card-head"><span><b>${escapeHtml(set.name)}</b> <span class="dim">· ${set.rules} rules · ${source}</span></span>${toggleHtml(
+      `data-set="${set.id}"`,
+      set.enabled,
+      `${set.name} enabled`
+    )}</div><div class="rows">`;
+    for (const group of set.groups) {
+      const result = group.failing ? `<span class="fail-tx">${group.failing} failing</span>` : `<span class="dim">all pass</span>`;
+      html += `<div class="line"><span>${escapeHtml(group.name)} <span class="dim">· ${group.rules} rules</span> ${
+        group.enabled ? result : `<span class="dim">off</span>`
+      }</span>${toggleHtml(`data-set="${set.id}" data-group="${escapeHtml(group.name)}"`, group.enabled, `${group.name} enabled`)}</div>`;
+    }
+    if (set.hiddenGroups) html += `<div class="line"><span class="dim">+ ${set.hiddenGroups} more groups</span><span></span></div>`;
+    for (const rule of set.items) {
+      const result = !rule.enabled ? "off" : rule.failing ? `${rule.failing} failing` : "pass";
+      html += `<div class="line"><span>${severityDot(rule.severity)}${escapeHtml(rule.name)} <span class="dim">· ${rule.severity} · ${result}</span></span>${toggleHtml(
+        `data-set="${set.id}" data-rule="${rule.id}"`,
+        rule.enabled,
+        `${rule.name} enabled`
+      )}</div>`;
+    }
+    html += `</div></div>`;
+  }
+  html += `<div class="lab"><span>create a rule</span><span class="sample">mockup</span></div>
+    <label class="ask"><input id="rule-ask" type="text" placeholder='Describe it — "every room needs a Department"' autocomplete="off" />
+    <button type="button" class="text-link" data-mock="ask">ask claude ↗</button></label>`;
+  checksView.innerHTML = html;
+}
+
+checksView.addEventListener("click", (event) => {
+  const target = event.target as HTMLElement;
+  const mock = target.closest<HTMLElement>("[data-mock]")?.dataset.mock;
+  if (mock === "import") {
+    status.textContent = `Import ${PHASE_2}. You can also ask Claude to import a checkset XML by path.`;
+    return;
+  }
+  if (mock === "ask") {
+    const text = ($("rule-ask") as HTMLInputElement).value.trim();
+    status.textContent = text ? `Creating "${text}" ${PHASE_2}.` : "Describe the rule first.";
+    return;
+  }
+  const tog = target.closest<HTMLButtonElement>("button.tog");
+  if (!tog) return;
+  const set = mockRulesets.find((s) => s.id === tog.dataset.set);
+  if (!set) return;
+  if (tog.dataset.group) {
+    const group = set.groups.find((g) => g.name === tog.dataset.group);
+    if (group) group.enabled = !group.enabled;
+  } else if (tog.dataset.rule) {
+    const rule = set.items.find((r) => r.id === tog.dataset.rule);
+    if (rule) rule.enabled = !rule.enabled;
+  } else {
+    set.enabled = !set.enabled;
+  }
+  renderChecks();
+  syncDock();
+  status.textContent = "Rule selection changed (mockup — not saved yet)";
+});
+
+btnRunChecks.addEventListener("click", () => {
+  status.textContent = `Running checks ${PHASE_2}. The dashboard shows sample results for now.`;
+});
+
+function meterHtml(pct: number | undefined) {
+  if (pct == null) return `<span class="meter"><span class="bar"></span><span class="pct">—</span></span>`;
+  return `<span class="meter"><span class="bar"><i style="width:${Math.max(0, Math.min(100, pct))}%"></i></span><span class="pct">${pct}%</span></span>`;
+}
+
+function sparkHtml(values: number[]) {
+  if (values.length < 2) return "";
+  const lo = Math.min(...values) - 2;
+  const hi = Math.max(...values) + 2;
+  const pts = values.map((v, i) => [(i / (values.length - 1)) * 156 + 2, 32 - ((v - lo) / (hi - lo)) * 28]);
+  return `<svg class="spark" viewBox="0 0 160 34" preserveAspectRatio="none" aria-label="Rules passing over the last ${values.length} runs"><polyline points="${pts
+    .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
+    .join(" ")}"/></svg>`;
+}
+
+function renderDashboard() {
+  const r = MOCK_RESULTS;
+  // Real: element counts from the loaded schedule (host only for compliance; links are stats only).
+  const hostRows = allRows.filter(isHostRow);
+  const linked = allRows.length - hostRows.length;
+  const counts = new Map<string, number>();
+  for (const row of hostRows) {
+    const name = (row.category ?? "").trim() || "(none)";
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  const topCategories = Array.from(counts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+  let html = `<div class="notice">Mockup — check results below are <b>sample data</b>; element counts are from this model. Live results arrive with the checks engine.</div>`;
+  html += `<div class="kpis">
+    <div class="card"><div class="lab" style="margin:0"><span>rules passing</span><span class="sample">sample</span></div>
+      <div style="display:flex;align-items:flex-end;gap:10px;margin-top:6px"><span class="big">${pad3(r.passingPct)}%</span><span class="delta">+${r.deltaPct} vs last</span></div>
+      ${sparkHtml(r.trend)}</div>
+    <div class="card"><div class="lab" style="margin:0"><span>issues</span><span class="sample">sample</span></div>
+      <div class="rows">
+        <div class="line"><span>${severityDot("error")}errors</span><span class="dim">${pad3(r.errors)}</span></div>
+        <div class="line"><span>${severityDot("warning")}warnings</span><span class="dim">${pad3(r.warnings)}</span></div>
+        <div class="line"><span>${severityDot("info")}no IFC class</span><span class="dim">${pad3(r.noIfcClass)}</span></div>
+      </div></div>
+  </div>`;
+
+  html += `<div class="lab"><span>elements · host ${hostRows.length.toLocaleString()} · linked ${linked.toLocaleString()} (stats only)</span><span>compliance <span class="sample">sample</span></span></div><div class="rows">`;
+  if (topCategories.length === 0) html += `<div class="line"><span class="dim">Load elements in 01 to see counts.</span><span></span></div>`;
+  for (const [name, n] of topCategories) {
+    html += `<div class="line"><span>${categoryGlyph(name)}${escapeHtml(name)} <span class="dim">${n.toLocaleString()}</span></span>${meterHtml(
+      r.compliance[name]
+    )}</div>`;
+  }
+  html += `</div>`;
+
+  html += `<div class="lab"><span>parameters · fill rate where required</span><span class="sample">sample</span></div><div class="rows">`;
+  for (const p of r.parameters) {
+    html += `<div class="line"><span>${escapeHtml(p.name)} <span class="dim">· ${escapeHtml(p.where)}</span></span>${meterHtml(p.fill)}</div>`;
+  }
+  html += `</div>`;
+
+  html += `<div class="lab"><span>fixes · ranked by elements affected</span><span class="sample">sample</span></div>`;
+  for (const fix of r.fixes) {
+    html += `<div class="card fix"><div>${severityDot(fix.severity)}<b>${escapeHtml(fix.title)}</b> <span class="dim">· ${escapeHtml(
+      fix.scope
+    )}</span></div><p>${escapeHtml(fix.detail)}</p></div>`;
+  }
+  dashboardView.innerHTML = html;
 }
 
 document.querySelectorAll<HTMLButtonElement>(".tab").forEach((el) => {
@@ -1812,6 +1988,7 @@ function parseSchedule(data: ScheduleData | undefined, fallbackText?: string) {
   refreshParamPicker();
   updateStats();
   render();
+  if (activeTab === "dashboard") renderDashboard();
   if (data.message) status.textContent = data.message;
 }
 
