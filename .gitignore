@@ -370,4 +370,5 @@ FodyWeavers.xsd
 # General
 # =============================================================================
 .claude/
+docs/superpowers/
 .DS_Store
