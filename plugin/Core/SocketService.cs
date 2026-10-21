@@ -204,12 +204,13 @@ namespace revit_mcp_plugin.Core
 
             try
             {
+                // One Read is capped at this size. A Walls isolate is ~10KB of ids, so a single
+                // 8192-byte read parsed an incomplete object and Revit returned Invalid JSON.
                 byte[] buffer = new byte[8192];
+                var pending = new StringBuilder();
 
                 while (_isRunning && tcpClient.Connected)
                 {
-                    // 读取客户端消息
-                    // Read client messages.
                     int bytesRead = 0;
 
                     try
@@ -218,27 +219,22 @@ namespace revit_mcp_plugin.Core
                     }
                     catch (IOException)
                     {
-                        // 客户端断开连接
-                        // Client disconnected.
                         break;
                     }
 
                     if (bytesRead == 0)
                     {
-                        // 客户端断开连接
-                        // Client disconnected.
                         break;
                     }
 
-                    string message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                    System.Diagnostics.Trace.WriteLine($"收到消息: {message}\nReceived message: {message}");
-
-                    string response = ProcessJsonRPCRequest(message);
-
-                    // 发送响应
-                    // Send response.
-                    byte[] responseData = Encoding.UTF8.GetBytes(response);
-                    stream.Write(responseData, 0, responseData.Length);
+                    pending.Append(Encoding.UTF8.GetString(buffer, 0, bytesRead));
+                    string message;
+                    while (TryExtractJsonObject(pending, out message))
+                    {
+                        string response = ProcessJsonRPCRequest(message);
+                        byte[] responseData = Encoding.UTF8.GetBytes(response);
+                        stream.Write(responseData, 0, responseData.Length);
+                    }
                 }
             }
             catch(Exception)
@@ -249,6 +245,60 @@ namespace revit_mcp_plugin.Core
             {
                 tcpClient.Close();
             }
+        }
+
+        /// <summary>
+        /// Take one complete top-level JSON object out of the TCP buffer.
+        /// Returns false when the next object is still incomplete.
+        /// </summary>
+        private static bool TryExtractJsonObject(StringBuilder pending, out string message)
+        {
+            message = null;
+            var text = pending.ToString();
+            var start = -1;
+            var depth = 0;
+            var inString = false;
+            var escape = false;
+            for (var i = 0; i < text.Length; i++)
+            {
+                var c = text[i];
+                if (inString)
+                {
+                    if (escape)
+                    {
+                        escape = false;
+                        continue;
+                    }
+                    if (c == '\\')
+                    {
+                        escape = true;
+                        continue;
+                    }
+                    if (c == '"') inString = false;
+                    continue;
+                }
+                if (c == '"')
+                {
+                    inString = true;
+                    continue;
+                }
+                if (c == '{')
+                {
+                    if (depth == 0) start = i;
+                    depth++;
+                }
+                else if (c == '}' && depth > 0)
+                {
+                    depth--;
+                    if (depth == 0 && start >= 0)
+                    {
+                        message = text.Substring(start, i - start + 1);
+                        pending.Remove(0, i + 1);
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
 
         private string ProcessJsonRPCRequest(string requestJson)
