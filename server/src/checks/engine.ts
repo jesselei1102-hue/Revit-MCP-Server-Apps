@@ -97,11 +97,16 @@ export function evalCondition(el: CollectedElement, c: Condition): boolean {
   }
 }
 
-function inScope(rule: Rule, el: CollectedElement): boolean {
+export function inScope(rule: Rule, el: CollectedElement): boolean {
   if (!rule.scope.categories.includes(el.category)) return false;
   if (rule.scope.elementKind === "instance" && el.isType) return false;
   if (rule.scope.elementKind === "type" && !el.isType) return false;
   return rule.scope.where.every((c) => evalCondition(el, c));
+}
+
+/** True when an in-scope element violates at least one requirement. */
+export function failsRule(rule: Rule, el: CollectedElement): boolean {
+  return !rule.require.every((c) => evalCondition(el, c));
 }
 
 /** "OST_StructuralFraming" → "Structural Framing". */
