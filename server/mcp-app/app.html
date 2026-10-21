@@ -560,6 +560,24 @@
     }
     .tog[aria-checked="true"] { background: var(--accent); box-shadow: var(--glow); }
     .tog[aria-checked="true"]::after { transform: translateX(12px); background: var(--on-accent); }
+    .tog[aria-checked="mixed"] { background: var(--accent-hl); }
+    .tog[aria-checked="mixed"]::after { transform: translateX(6px); background: var(--accent); }
+    .exp { color: var(--tx); text-align: left; padding: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+    .exp:hover { color: var(--accent-tx); }
+    .line.indent { padding-left: 16px; }
+    .rules { padding-left: 28px; border-left: 0.5px solid var(--line); margin-left: 6px; }
+    .rule-line { font-size: 12px; }
+    .rule-ctl { display: inline-flex; align-items: center; gap: 8px; }
+    .sev-select {
+      font: inherit;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--tx2);
+      background: transparent;
+      border: 0.5px solid var(--line2);
+      border-radius: 6px;
+      padding: 1px 4px;
+    }
     .ask {
       display: flex;
       align-items: center;
