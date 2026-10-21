@@ -9,6 +9,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { summarizeSchedule } from "./scheduleSummary.js";
 import { withRevitConnection } from "./utils/ConnectionManager.js";
 
 /**
@@ -453,12 +454,25 @@ export async function registerMcpApp(server: McpServer) {
           .boolean()
           .optional()
           .describe("Include elements from loaded Revit links. Default true. Unloaded links are skipped."),
+        detail: z
+          .enum(["summary", "full"])
+          .optional()
+          .describe(
+            "summary (default): element counts only — the app then loads the full table itself. full: every row (used by the app; can be megabytes)."
+          ),
       },
       _meta: { ui: { resourceUri: REVIT_REPORT_RESOURCE_URI } },
     },
-    async (args) => {
+    async ({ detail, ...args }) => {
       try {
-        const data = await loadScheduleData(args ?? {});
+        if (detail !== "full") {
+          // The host passes tool results to the model, so the agent's call stays small: identity-only
+          // scan for counts. The app reloads with detail "full" as soon as it opens.
+          const data = await loadScheduleData({ ...args, parametersOutputType: "None" });
+          const { structured, text } = summarizeSchedule(data);
+          return { content: [{ type: "text" as const, text }], structuredContent: structured };
+        }
+        const data = await loadScheduleData(args);
         return {
           content: [{ type: "text" as const, text: JSON.stringify(data) }],
           structuredContent: data,
