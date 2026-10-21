@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<MCSettings AllowRequired="False" Name="Mini &quot;IFC&quot; checks" Author="Test" Description="Fixture">
+  <Heading ID="h1" HeadingText="IFC-SG" Description="" IsChecked="True">
+    <Section ID="s0" SectionName="&lt;--Unused--&gt;" Title="" IsChecked="True" Description="" />
+    <Section ID="s1" SectionName="Architecture (ARC)" Title="" IsChecked="True" Description="">
+      <Section ID="s2" SectionName="Doors" Title="" IsChecked="True" Description="">
+        <Check ID="c1" CheckName="FireRating" Description="Doors need FireRating." FailureMessage="Missing FireRating." ResultCondition="FailNoElements" CheckType="Custom" IsRequired="False" IsChecked="True">
+          <Filter ID="f1" Operator="And" Category="Category" Property="OST_Doors" Condition="Included" Value="True" CaseInsensitive="False" Unit="None" UnitClass="None" FieldTitle="" UserDefined="False" Validation="None" />
+          <Filter ID="f2" Operator="And" Category="Parameter" Property="IfcExportAs" Condition="Equal" Value="IfcDoor" CaseInsensitive="False" Unit="None" UnitClass="None" FieldTitle="" UserDefined="False" Validation="None" />
+          <Filter ID="f3" Operator="And" Category="Parameter" Property="FireRating" Condition="Defined" Value="True" CaseInsensitive="False" Unit="None" UnitClass="None" FieldTitle="" UserDefined="False" Validation="None" />
+          <Filter ID="f4" Operator="And" Category="TypeOrInstance" Property="Is Element Type" Condition="Equal" Value="False" CaseInsensitive="False" Unit="None" UnitClass="None" FieldTitle="" UserDefined="False" Validation="None" />
+        </Check>
+        <Check ID="c3" CheckName="Either Mark" Description="" FailureMessage="" ResultCondition="FailMatchingElements" CheckType="Custom" IsRequired="False" IsChecked="True">
+          <Filter ID="f7" Operator="And" Category="Category" Property="OST_Doors" Condition="Included" Value="True" CaseInsensitive="False" Unit="None" UnitClass="None" FieldTitle="" UserDefined="False" Validation="None" />
+          <Filter ID="f8" Operator="Or" Category="Parameter" Property="Mark" Condition="HasNoValue" Value="True" CaseInsensitive="False" Unit="None" UnitClass="None" FieldTitle="" UserDefined="False" Validation="None" />
+        </Check>
+      </Section>
+      <Section ID="s3" SectionName="Export to IFC As" Title="" IsChecked="True" Description="">
+        <Check ID="c2" CheckName="Export to IFC As for Doors" Description="" FailureMessage="" ResultCondition="CountAndList" CheckType="Custom" IsRequired="False" IsChecked="True">
+          <Filter ID="f5" Operator="And" Category="Category" Property="OST_Doors" Condition="Included" Value="True" CaseInsensitive="False" Unit="None" UnitClass="None" FieldTitle="" UserDefined="False" Validation="None" />
+          <Filter ID="f6" Operator="And" Category="Parameter" Property="Export to IFC As" Condition="HasNoValue" Value="True" CaseInsensitive="False" Unit="None" UnitClass="None" FieldTitle="" UserDefined="False" Validation="None" />
+        </Check>
+      </Section>
+    </Section>
+  </Heading>
+</MCSettings>
