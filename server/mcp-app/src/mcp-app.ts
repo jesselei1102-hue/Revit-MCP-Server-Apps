@@ -211,6 +211,8 @@ let allRows: Record<string, string>[] = [];
 let viewRows: Record<string, string>[] = [];
 let lastArgs: Record<string, unknown> = {};
 const checked = new Set<number>();
+/** Last checkbox row clicked without Shift. Shift-click selects through to here. */
+let checkAnchor: number | null = null;
 /** Pending type edits before Apply. */
 const pendingTypes = new Map<number, PendingType>();
 /** Pending parameter edits before Apply. Key = `${elementId}\\0${name}` */
@@ -270,6 +272,7 @@ const changesList = $("changes-list");
 const selCount = $("sel-count");
 const btnShow = $<HTMLButtonElement>("btn-show");
 const btnIsolate = $<HTMLButtonElement>("btn-isolate");
+const btnSection = $<HTMLButtonElement>("btn-section");
 const btnResetView = $<HTMLButtonElement>("btn-reset-view");
 const btnRefresh = $<HTMLButtonElement>("btn-refresh");
 const btnTheme = $<HTMLButtonElement>("btn-theme");
@@ -1140,7 +1143,7 @@ function render() {
   const labels: Record<string, string> = { family: "type" };
 
   let html = "<table><thead><tr>";
-  html += `<th class="check-col"><input type="checkbox" id="check-all" aria-label="Select all in view"${
+  html += `<th class="check-col"><input type="checkbox" id="check-all" aria-label="Select all in view" title="Select all. Shift-click rows to select a range."${
     allFilteredChecked ? " checked" : ""
   } /></th>`;
   for (const column of visible) {
@@ -1153,7 +1156,7 @@ function render() {
     const host = isHostRow(row);
     const rowClass = [checked.has(id) ? "sel" : "", pendingTypes.has(id) ? "dirty" : ""].filter(Boolean).join(" ");
     html += `<tr data-row-index="${rowIndex}"${rowClass ? ` class="${rowClass}"` : ""}>`;
-    html += `<td class="check-col"><input type="checkbox" data-id="${escapeHtml(row.elementId)}" aria-label="Select row"${
+    html += `<td class="check-col"><input type="checkbox" data-id="${escapeHtml(row.elementId)}" aria-label="Select row" title="Shift-click to select a range"${
       checked.has(id) ? " checked" : ""
     } /></td>`;
     for (const column of visible) {
@@ -1204,6 +1207,58 @@ function render() {
   syncDock();
 }
 
+function paintRowChecks(from: number, to: number) {
+  const lo = Math.min(from, to);
+  const hi = Math.max(from, to);
+  for (let i = lo; i <= hi; i++) {
+    const tr = table.querySelector(`tr[data-row-index="${i}"]`);
+    const box = tr?.querySelector("input[data-id]") as HTMLInputElement | null;
+    const id = Number(viewRows[i]?.elementId);
+    if (!box || !Number.isFinite(id)) continue;
+    box.checked = checked.has(id);
+    tr?.classList.toggle("sel", box.checked);
+  }
+  const allBox = table.querySelector("#check-all") as HTMLInputElement | null;
+  if (allBox) allBox.checked = viewRows.length > 0 && viewRows.every((row) => checked.has(Number(row.elementId)));
+}
+
+/** True while a Shift-click is settling, so the checkbox's own toggle does not move the anchor. */
+let shiftSelecting = false;
+
+table.addEventListener("click", (event) => {
+  const input = (event.target as HTMLElement).closest("input[data-id]") as HTMLInputElement | null;
+  if (!input || !event.shiftKey) return;
+  const index = Number(input.closest("tr")?.dataset.rowIndex);
+  const id = Number(input.dataset.id);
+  if (!Number.isFinite(index) || !Number.isFinite(id)) return;
+  const anchor = checkAnchor;
+  shiftSelecting = true;
+  // The browser toggles the clicked box after this listener. Apply the range
+  // once that toggle has landed, or the clicked row ends up unchecked.
+  setTimeout(() => {
+    shiftSelecting = false;
+    if (anchor == null) {
+      checkAnchor = index;
+      if (input.checked) checked.add(id);
+      else checked.delete(id);
+      input.closest("tr")?.classList.toggle("sel", input.checked);
+      syncDock();
+      return;
+    }
+    const lo = Math.min(anchor, index);
+    const hi = Math.max(anchor, index);
+    for (let i = lo; i <= hi; i++) {
+      const rowId = Number(viewRows[i]?.elementId);
+      if (Number.isFinite(rowId)) checked.add(rowId);
+    }
+    checked.add(id);
+    paintRowChecks(lo, hi);
+    input.checked = true;
+    input.closest("tr")?.classList.add("sel");
+    syncDock();
+  }, 0);
+});
+
 table.addEventListener("change", (event) => {
   const target = event.target as HTMLInputElement;
   if (target.id === "check-all") {
@@ -1211,6 +1266,7 @@ table.addEventListener("change", (event) => {
       if (target.checked) checked.add(id);
       else checked.delete(id);
     }
+    checkAnchor = null;
     render();
     return;
   }
@@ -1218,6 +1274,10 @@ table.addEventListener("change", (event) => {
   if (!Number.isFinite(id)) return;
   if (target.checked) checked.add(id);
   else checked.delete(id);
+  if (!shiftSelecting) {
+    const index = Number(target.closest("tr")?.dataset.rowIndex);
+    if (Number.isFinite(index)) checkAnchor = index;
+  }
   target.closest("tr")?.classList.toggle("sel", target.checked);
   syncDock();
 });
@@ -1358,9 +1418,16 @@ function syncDock() {
 
   const ids = targetIds();
   const selectedInView = viewRows.filter((row) => checked.has(Number(row.elementId))).length;
-  selCount.textContent = selectedInView ? `${selectedInView} selected` : `${viewRows.length} in view`;
-  btnShow.disabled = busy || ids.length === 0;
-  btnIsolate.disabled = busy || ids.length === 0;
+  const scope = filters.category || filters.type || filters.family || "";
+  selCount.textContent = selectedInView
+    ? `${selectedInView} selected`
+    : scope
+      ? `${viewRows.length} ${scope}`
+      : `${viewRows.length} in view`;
+  btnShow.disabled = busy || (ids.length === 0 && viewRows.length === 0);
+  btnIsolate.disabled = busy || (ids.length === 0 && viewRows.length === 0);
+  btnSection.hidden = selectedInView === 0;
+  btnSection.disabled = busy;
   btnResetView.disabled = busy || allRows.length === 0;
 
   // 01/02 dock: selection + Apply. 03/04 dock: Run checks (one primary button per view).
@@ -1651,8 +1718,32 @@ function hostTargets(rows: Record<string, string>[]): { ids: number[]; linkNames
   return { ids: [...ids], linkNames: [...linkNames], hostCount };
 }
 
+/** Category, type, level, family, or search is on. Link-only is not enough — that still means the whole link. */
+function narrowedFilters(): boolean {
+  return Boolean(
+    filters.category || filters.level || filters.family || filters.type || filters.search.trim()
+  );
+}
+
+function hostElementIds(rows: Record<string, string>[]): number[] {
+  const ids = new Set<number>();
+  for (const row of rows) {
+    if (!isHostRow(row)) continue;
+    const id = Number(row.elementId);
+    if (Number.isFinite(id)) ids.add(id);
+  }
+  return [...ids];
+}
+
 function targetIds(): number[] {
-  return hostTargets(targetRows()).ids;
+  const rows = targetRows();
+  if (rows.length === 0) return [];
+  const checkedCount = viewRows.filter((row) => checked.has(Number(row.elementId))).length;
+  if (narrowedFilters() || checkedCount > 0) {
+    const hostIds = hostElementIds(rows);
+    if (hostIds.length > 0 || narrowedFilters()) return hostIds;
+  }
+  return hostTargets(rows).ids;
 }
 
 function linkInstanceIds(rows: Record<string, string>[]): number[] {
@@ -1692,6 +1783,74 @@ async function callHostTool(name: string, elementIds: number[], action?: string)
   })) as ToolResult;
   const error = toolError(textFromResult(result));
   if (error) throw new Error(error);
+}
+
+/**
+ * The Revit socket parses each read as one JSON object, and one read is 8192 bytes.
+ * A few hundred ids fit. A whole category such as Walls (~1200 ids) is split and rejected.
+ */
+const SOCKET_ID_LIMIT = 400;
+
+/** Collect and show or isolate one category inside Revit, so the id list never crosses the socket. */
+const CATEGORY_VIEW_CODE = `
+var uiDoc = new UIDocument(document);
+var view = uiDoc.ActiveView;
+if (view == null) throw new Exception("No active view");
+var bic = (BuiltInCategory)Enum.Parse(typeof(BuiltInCategory), (string)parameters[0]);
+var mode = (string)parameters[1];
+var ids = new FilteredElementCollector(document)
+    .OfCategory(bic)
+    .WhereElementIsNotElementType()
+    .ToElementIds()
+    .ToList();
+if (ids.Count == 0) throw new Exception("No elements in that category");
+if (mode == "isolate") {
+    using (var t = new Transaction(document, "Isolate category")) {
+        t.Start();
+        if (view.IsInTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate))
+            view.DisableTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate);
+        view.IsolateElementsTemporary(ids);
+        t.Commit();
+    }
+}
+else {
+    uiDoc.Selection.SetElementIds(ids);
+}
+try { uiDoc.ShowElements(ids); }
+catch (Exception) { uiDoc.ShowElements(ids.Take(200).ToList()); }
+return ids.Count;
+`;
+
+async function callSendCode(code: string, parameters: string[]): Promise<string> {
+  const result = (await app.callServerTool({
+    name: "send_code_to_revit",
+    arguments: { code, parameters, transactionMode: "none" },
+  })) as ToolResult;
+  const text = textFromResult(result) ?? "";
+  if (
+    text.startsWith("Code execution failed") ||
+    text.includes("代码编译错误") ||
+    text.includes("执行失败") ||
+    /"success"\s*:\s*false/i.test(text)
+  ) {
+    throw new Error(text.slice(0, 400));
+  }
+  return text;
+}
+
+async function showCategoryInRevit(mode: ShowMode, ost: string, category: string, skippedLinks: number) {
+  setBusy(true, `${mode === "isolate" ? "Isolating" : "Selecting"} ${category}…`);
+  try {
+    await callSendCode(CATEGORY_VIEW_CODE, [ost, mode === "isolate" ? "isolate" : "select"]);
+    const base = mode === "isolate" ? `Isolated ${category}` : `Selected and zoomed ${category}`;
+    status.textContent = skippedLinks
+      ? `${base}. ${plural(skippedLinks, "linked row")} skipped — Revit cannot show elements inside a link one by one.`
+      : base;
+  } catch (error) {
+    status.textContent = error instanceof Error ? error.message : String(error);
+  } finally {
+    setBusy(false);
+  }
 }
 
 /** A hidden Revit link stays invisible under temporary isolate until the instance and its type are unhidden. */
@@ -1752,13 +1911,58 @@ async function hideLinkedModels(): Promise<number> {
   return linkIds.length;
 }
 
+function hostActionLabel(mode: ShowMode, count: number, skippedLinks: number): string {
+  const what = filters.category ? `${count} ${filters.category}` : plural(count, "element");
+  const base = mode === "isolate" ? `Isolated ${what}` : `Selected and zoomed ${what}`;
+  if (!skippedLinks) return base;
+  return `${base}. ${plural(skippedLinks, "linked row")} skipped — Revit cannot show elements inside a link one by one.`;
+}
+
+/** Select and zoom. Isolate first when asked. A zoom failure does not hide a finished isolate. */
+async function frameElements(mode: ShowMode, ids: number[], done: string) {
+  setBusy(true, `${mode === "isolate" ? "Isolating" : "Selecting"} ${plural(ids.length, "element")}…`);
+  let isolated = false;
+  try {
+    if (mode === "isolate") {
+      await callHostTool("operate_element", ids, "Isolate");
+      isolated = true;
+    }
+    let followUp: string | null = null;
+    try {
+      await callHostTool("select_elements", ids);
+    } catch (error) {
+      followUp = error instanceof Error ? error.message : String(error);
+      if (!isolated) throw error;
+    }
+    try {
+      await callHostTool("zoom_to_elements", ids);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (ids.length > 200) {
+        try {
+          await callHostTool("zoom_to_elements", ids.slice(0, 200));
+        } catch {
+          followUp = followUp ?? message;
+        }
+      } else if (!isolated) {
+        throw error;
+      } else {
+        followUp = followUp ?? message;
+      }
+    }
+    status.textContent = followUp && isolated ? `${done} (${followUp})` : done;
+  } catch (error) {
+    status.textContent = error instanceof Error ? error.message : String(error);
+  } finally {
+    setBusy(false);
+  }
+}
+
 async function showInRevit(mode: ShowMode) {
   const rows = targetRows();
   const checkedCount = viewRows.filter((row) => checked.has(Number(row.elementId))).length;
   const hostOnly = rows.length > 0 && rows.every(isHostRow);
-  const narrowed = Boolean(
-    filters.category || filters.level || filters.family || filters.type || filters.search.trim()
-  );
+  const narrowed = narrowedFilters();
   // The whole host set is thousands of ids. Isolating them times out while a schedule load is in
   // flight, so the view never changes. Hiding the link instances is the visible result.
   if (mode === "isolate" && hostOnly && checkedCount === 0 && !narrowed) {
@@ -1781,6 +1985,41 @@ async function showInRevit(mode: ShowMode) {
     } finally {
       setBusy(false);
     }
+    return;
+  }
+
+  const hostIds = hostElementIds(rows);
+  const skippedLinks = rows.filter((row) => !isHostRow(row)).length;
+  // Category chip alone (Walls, Doors, …) with no row checks. Collecting those ids in
+  // Revit avoids the 8192-byte socket read, which rejects a full wall list as invalid JSON.
+  const categoryOst =
+    checkedCount === 0 &&
+    filters.category &&
+    !filters.level &&
+    !filters.family &&
+    !filters.type &&
+    !filters.search.trim()
+      ? ostForCategory(filters.category)
+      : undefined;
+  if (categoryOst && hostIds.length > 0) {
+    await showCategoryInRevit(mode, categoryOst, filters.category, skippedLinks);
+    return;
+  }
+  // A category/type/level/family/search, or checked rows, means those host elements.
+  // Linked rows in that set must not become an isolate of the whole link — that looks
+  // like Walls did nothing, because the link brings the rest of the model back.
+  if ((narrowed || checkedCount > 0) && hostIds.length > SOCKET_ID_LIMIT) {
+    status.textContent = `That is ${hostIds.length} elements, which does not fit in one request. Narrow the filter or check fewer rows.`;
+    return;
+  }
+  if ((narrowed || checkedCount > 0) && hostIds.length > 0) {
+    await frameElements(mode, hostIds, hostActionLabel(mode, hostIds.length, skippedLinks));
+    return;
+  }
+  if (narrowed && hostIds.length === 0) {
+    status.textContent = skippedLinks
+      ? "These rows are inside a linked model. Clear the category and Isolate the link — Revit cannot show or isolate elements inside a link one by one."
+      : "Nothing in view to show";
     return;
   }
 
@@ -1811,6 +2050,33 @@ async function showInRevit(mode: ShowMode) {
 
 btnShow.addEventListener("click", () => void showInRevit("select"));
 btnIsolate.addEventListener("click", () => void showInRevit("isolate"));
+
+btnSection.addEventListener("click", async () => {
+  const rows = viewRows.filter((row) => checked.has(Number(row.elementId)));
+  const ids = hostElementIds(rows);
+  const skipped = rows.length - ids.length;
+  if (ids.length === 0) {
+    status.textContent = skipped
+      ? "Section box needs host elements. Revit cannot box elements inside a link one by one."
+      : "Check a row first";
+    return;
+  }
+  if (ids.length > SOCKET_ID_LIMIT) {
+    status.textContent = `Section box fits ${SOCKET_ID_LIMIT} elements at a time. Check fewer rows.`;
+    return;
+  }
+  setBusy(true, "Creating section box…");
+  try {
+    await callHostTool("operate_element", ids, "SelectionBox");
+    status.textContent = skipped
+      ? `Section box around ${plural(ids.length, "element")}. ${plural(skipped, "linked row")} skipped.`
+      : `Section box around ${plural(ids.length, "element")}`;
+  } catch (error) {
+    status.textContent = error instanceof Error ? error.message : String(error);
+  } finally {
+    setBusy(false);
+  }
+});
 
 btnResetView.addEventListener("click", async () => {
   const ids = filteredIds().length
