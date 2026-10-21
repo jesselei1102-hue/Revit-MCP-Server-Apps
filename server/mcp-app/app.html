@@ -2,418 +2,478 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>MCP Apps · Revit Schedule</title>
   <style>
-    :root { color-scheme: light; }
+    /* ---------- Tokens: Ultraviolet, light (default) + dark ---------- */
+    :root {
+      color-scheme: light;
+      --bg: #ffffff;
+      --s1: #f5f5f8;
+      --s2: #ececf1;
+      --line: rgba(18, 17, 24, 0.08);
+      --line2: rgba(18, 17, 24, 0.16);
+      --tx: #121118;
+      --tx2: #5d5b6b;
+      --tx3: #9a98a8;
+      --accent: #7b61ff;
+      --accent-tx: #5b41e0;
+      --on-accent: #ffffff;
+      --accent-soft: rgba(123, 97, 255, 0.07);
+      --accent-hl: rgba(123, 97, 255, 0.2);
+      --hl-tx: #3a2a99;
+      --danger: #e5484d;
+      --dock-bg: #121118;
+      --dock-line: transparent;
+      --dock-tx: #f2f1f7;
+      --dock-tx2: rgba(242, 241, 247, 0.62);
+      --dock-hover: rgba(255, 255, 255, 0.1);
+      --pop-shadow: 0 12px 32px rgba(18, 17, 24, 0.14), 0 2px 6px rgba(18, 17, 24, 0.06);
+      --glow: none;
+      --mono: var(--font-mono, ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace);
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #0e0d14;
+      --s1: #16151e;
+      --s2: #1d1c27;
+      --line: rgba(255, 255, 255, 0.07);
+      --line2: rgba(255, 255, 255, 0.14);
+      --tx: #ecebf3;
+      --tx2: #9c9aae;
+      --tx3: #5f5d70;
+      --accent: #8f7bff;
+      --accent-tx: #b3a6ff;
+      --on-accent: #0e0d14;
+      --accent-soft: rgba(143, 123, 255, 0.07);
+      --accent-hl: rgba(143, 123, 255, 0.28);
+      --hl-tx: #d9d2ff;
+      --danger: #f0605f;
+      --dock-bg: #1d1c27;
+      --dock-line: rgba(255, 255, 255, 0.14);
+      --dock-tx: #ecebf3;
+      --dock-tx2: #9c9aae;
+      --dock-hover: rgba(255, 255, 255, 0.06);
+      --pop-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+      --glow: 0 0 10px var(--accent);
+    }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
-
-    html, body {
-      min-height: 100%;
-      background: #f7f6f3;
-    }
+    /* No min-height here: hosts auto-size the iframe to the content, and a viewport-relative minimum
+       would stop the frame from ever shrinking (e.g. switching from Elements to Checks). */
+    html, body { background: var(--bg); }
     body {
       font-family: var(--font-sans, var(--font-family, ui-sans-serif, system-ui, sans-serif));
       font-size: 13px;
-      line-height: 1.35;
-      color: #1c1917;
-      padding: 12px 14px 16px;
+      line-height: 1.4;
+      color: var(--tx);
+      -webkit-font-smoothing: antialiased;
     }
+    button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+    button:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+    .mono { font-family: var(--mono); }
+    svg.i { width: 14px; height: 14px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    [hidden] { display: none !important; }
 
-    .head {
+    .app { position: relative; display: flex; flex-direction: column; }
+    .orbit-clip { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+    .orbit { position: absolute; right: -70px; top: -80px; pointer-events: none; }
+    .orbit .o1 { stroke: var(--line2); }
+    .orbit .o2 { stroke: var(--line); }
+    .orbit .o3 { fill: var(--accent); }
+    .orbit .o4 { fill: var(--accent); opacity: 0.12; }
+
+    /* ---------- Header ---------- */
+    .top {
+      position: relative;
       display: flex;
-      align-items: baseline;
+      align-items: center;
       justify-content: space-between;
       gap: 12px;
-      margin-bottom: 10px;
+      padding: 18px 20px 0;
     }
-    .head h1 {
-      font-size: 14px;
-      font-weight: 600;
-      letter-spacing: -0.01em;
-    }
-    .status {
-      font-size: 12px;
-      color: #78716c;
-      text-align: right;
-      font-variant-numeric: tabular-nums;
-    }
-
-    .metrics {
-      display: flex;
-      gap: 16px;
-      margin-bottom: 8px;
-    }
-    .metric b {
-      display: block;
-      font-size: 20px;
-      font-weight: 600;
-      letter-spacing: -0.03em;
-      font-variant-numeric: tabular-nums;
-      line-height: 1.1;
-    }
-    .metric span {
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .brand .logo-ring { stroke: var(--tx); }
+    .brand .logo-dot { fill: var(--accent); }
+    .brand h1 { font-size: 16px; font-weight: 400; letter-spacing: -0.01em; }
+    .meta {
+      font-family: var(--mono);
       font-size: 11px;
-      color: #78716c;
-    }
-    .metric.warn b { color: #b42318; }
-
-    #composition { margin-bottom: 12px; }
-    #composition[hidden] { display: none; }
-    #donut-svg { display: none; }
-    .donut-legend {
-      list-style: none;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .comp-bar {
-      display: flex;
-      height: 6px;
-      width: 100%;
-      border-radius: 99px;
-      overflow: hidden;
-      background: #e7e5e4;
-      margin-bottom: 6px;
-    }
-    .comp-bar button {
-      height: 100%;
-      border: 0;
-      padding: 0;
-      min-width: 2px;
-      border-radius: 0;
-      background: #a8a29e;
-      cursor: pointer;
-    }
-    .comp-bar button.on,
-    .comp-bar button:hover { background: #1c1917; }
-    .comp-bar button.other { cursor: default; }
-    .legend-row {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      font-size: 12px;
-      color: #78716c;
-      cursor: pointer;
-    }
-    .legend-row.on { color: #1c1917; font-weight: 600; }
-    .legend-count { margin-left: auto; font-variant-numeric: tabular-nums; }
-
-    .actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      align-items: center;
-      margin-bottom: 6px;
-    }
-    .links {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 2px 10px;
-      margin-bottom: 10px;
-    }
-    button {
-      font: inherit;
-      font-size: 12px;
-      border-radius: 6px;
-      cursor: pointer;
-    }
-    .actions > button, .segment {
-      border: 1px solid #d6d3d1;
-      background: #fff;
-      color: #1c1917;
-      padding: 6px 10px;
-    }
-    #btn-confirm {
-      background: #1c1917;
-      color: #fff;
-      border-color: transparent;
-      font-weight: 600;
-    }
-    #btn-apply-types,
-    #btn-apply-params {
-      background: #fff;
-      color: #b42318;
-      border-color: #b42318;
-      font-weight: 600;
-    }
-    #btn-apply-types:disabled,
-    #btn-apply-params:disabled,
-    #btn-clear-pending:disabled { display: none; }
-    button:disabled { opacity: 0.4; cursor: default; }
-    .links button {
-      border: 0;
-      background: transparent;
-      color: #78716c;
-      padding: 2px 0;
-    }
-    .links button:hover { color: #1c1917; }
-
-    .segment {
-      display: inline-flex;
-      padding: 2px;
-      gap: 2px;
-    }
-    .segment label {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      padding: 3px 8px;
-      border-radius: 4px;
-      font-size: 12px;
-      cursor: pointer;
-      color: #78716c;
-    }
-    .segment input { accent-color: currentColor; }
-    .segment label:has(input:checked) {
-      background: #fff;
-      color: #1c1917;
-    }
-
-    .filters {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      margin-bottom: 10px;
-    }
-    label.filter {
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-      min-width: 0;
-      font-size: 10px;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: #a8a29e;
-    }
-    label.filter.search { grid-column: 1 / -1; }
-    select, input[type="search"] {
-      width: 100%;
-      min-width: 0;
-      font: inherit;
-      font-size: 13px;
-      text-transform: none;
-      letter-spacing: 0;
-      color: #1c1917;
-      background: #fff;
-      border: 1px solid #d6d3d1;
-      border-radius: 6px;
-      padding: 6px 8px;
-      outline: none;
-    }
-    select:focus, input[type="search"]:focus {
-      border-color: #1c1917;
-    }
-
-    .ms-wrap { position: relative; min-width: 0; }
-    .ms-trigger {
-      width: 100%;
-      min-width: 0;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      font: inherit;
-      font-size: 13px;
-      text-transform: none;
-      letter-spacing: 0;
-      color: #1c1917;
-      background: #fff;
-      border: 1px solid #d6d3d1;
-      border-radius: 6px;
-      padding: 6px 8px;
-      text-align: left;
-      cursor: pointer;
-    }
-    .ms-trigger:hover,
-    .ms-wrap.open .ms-trigger { border-color: #1c1917; }
-    .ms-trigger .ms-label {
+      color: var(--tx3);
+      white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      white-space: nowrap;
+      max-width: 52vw;
+    }
+    .top-actions { display: flex; gap: 4px; }
+    .icon-btn {
+      width: 30px;
+      height: 30px;
+      border-radius: 99px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--tx2);
+      border: 0.5px solid var(--line2);
+      background: var(--bg);
+    }
+    .icon-btn:hover { color: var(--tx); border-color: var(--tx3); }
+    .icon-btn.spin svg { animation: spin 0.9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ---------- Stats ---------- */
+    .stats {
+      position: relative;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px 36px;
+      padding: 20px 20px 16px;
+    }
+    .stat b {
+      display: block;
+      font-family: var(--mono);
+      font-size: 26px;
+      font-weight: 400;
+      letter-spacing: -0.03em;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+    .stat span { font-family: var(--mono); font-size: 11px; color: var(--tx3); }
+    .sig {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      margin-right: 6px;
+      vertical-align: middle;
+      background: var(--accent);
+      box-shadow: var(--glow);
+    }
+    .sig.danger { background: var(--danger); box-shadow: none; }
+    .stat.idle .sig { display: none; }
+
+    /* ---------- Tabs ---------- */
+    .tabs {
+      position: relative;
+      display: flex;
+      gap: 26px;
+      margin: 0 20px;
+      border-bottom: 0.5px solid var(--line);
+    }
+    .tab {
+      position: relative;
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
+      padding: 10px 0;
+      color: var(--tx3);
+      font-size: 13px;
+    }
+    .tab:hover { color: var(--tx2); }
+    .tab .n { font-family: var(--mono); font-size: 11px; }
+    .tab .tab-count { font-family: var(--mono); font-size: 11px; color: var(--tx3); }
+    .tab.on { color: var(--tx); }
+    .tab.on::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: -1px;
+      height: 2px;
+      background: var(--accent);
+      box-shadow: var(--glow);
+    }
+    .tab .tab-count.hot { color: var(--accent-tx); }
+
+    .panel { position: relative; flex: 1 1 auto; }
+
+    /* ---------- Toolbar ---------- */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 14px 20px 10px;
+    }
+    .search {
+      flex: 1 1 auto;
       min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 0.5px solid var(--line2);
+      color: var(--tx3);
     }
-    .ms-trigger .ms-caret {
-      flex: 0 0 auto;
-      color: #a8a29e;
-      font-size: 10px;
+    .search:focus-within { border-bottom-color: var(--accent); color: var(--tx2); }
+    .search input {
+      flex: 1 1 auto;
+      min-width: 0;
+      font: inherit;
+      font-size: 13px;
+      color: var(--tx);
+      background: transparent;
+      border: 0;
+      outline: none;
+      padding: 7px 0;
     }
-    .ms-panel {
+    .search input::placeholder { color: var(--tx3); }
+    .text-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--tx2);
+      white-space: nowrap;
+      padding: 4px 0;
+    }
+    .text-link:hover, .pop-wrap.open > .text-link { color: var(--tx); }
+    .text-link sup { color: var(--accent-tx); font-size: 10px; }
+
+    .pop-wrap { position: relative; }
+    .popover {
       display: none;
       position: absolute;
       z-index: 40;
-      top: calc(100% + 4px);
-      left: 0;
+      top: calc(100% + 8px);
       right: 0;
-      min-width: 240px;
-      max-height: 280px;
-      background: #fff;
-      border: 1px solid #e7e5e4;
-      border-radius: 8px;
-      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
-      padding: 8px;
+      width: 280px;
+      padding: 12px;
+      background: var(--bg);
+      border: 0.5px solid var(--line2);
+      border-radius: 14px;
+      box-shadow: var(--pop-shadow);
       flex-direction: column;
-      gap: 6px;
+      gap: 10px;
     }
-    .ms-wrap.open .ms-panel { display: flex; }
-    .ms-panel input[type="search"] {
-      flex: 0 0 auto;
+    .pop-wrap.open .popover { display: flex; }
+    .field { display: flex; flex-direction: column; gap: 4px; font-family: var(--mono); font-size: 11px; color: var(--tx3); }
+    .field select, .popover input[type="search"] {
+      width: 100%;
+      font: inherit;
+      font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+      font-size: 13px;
+      color: var(--tx);
+      background: var(--s1);
+      border: 0.5px solid var(--line);
+      border-radius: 8px;
+      padding: 6px 8px;
+      outline: none;
     }
-    .ms-actions {
-      display: flex;
-      gap: 8px;
-      flex: 0 0 auto;
-    }
-    .ms-actions button {
-      border: 0;
-      background: transparent;
-      color: #78716c;
-      padding: 2px 0;
-      font-size: 12px;
-    }
-    .ms-actions button:hover { color: #1c1917; }
-    .ms-list {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-      overflow: auto;
-      flex: 1 1 auto;
-      min-height: 0;
-      max-height: 200px;
-    }
+    .field select:focus, .popover input[type="search"]:focus { border-color: var(--accent); }
+    .pop-actions { display: flex; justify-content: space-between; gap: 8px; }
+
+    .ms-list { list-style: none; overflow: auto; max-height: 220px; margin: 0 -4px; }
     .ms-list li {
       display: flex;
       align-items: center;
       gap: 8px;
       padding: 5px 6px;
-      border-radius: 4px;
+      border-radius: 6px;
       font-size: 12px;
-      text-transform: none;
-      letter-spacing: 0;
-      color: #1c1917;
       cursor: pointer;
     }
-    .ms-list li:hover { background: #f5f5f4; }
-    .ms-list li input { accent-color: #1c1917; flex: 0 0 auto; }
-    .ms-list li span {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      min-width: 0;
-    }
-    .ms-empty {
-      padding: 10px 6px;
-      font-size: 12px;
-      color: #a8a29e;
-      text-transform: none;
-      letter-spacing: 0;
-    }
+    .ms-list li:hover { background: var(--s1); }
+    .ms-list li input { accent-color: var(--accent); flex: 0 0 auto; }
+    .ms-list li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .ms-empty { padding: 8px 6px; font-size: 12px; color: var(--tx3); cursor: default !important; }
 
+    /* ---------- Chips ---------- */
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 20px 12px; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 11px;
+      border-radius: 99px;
+      border: 0.5px solid var(--line2);
+      font-size: 12px;
+      color: var(--tx2);
+      white-space: nowrap;
+    }
+    .chip:hover { color: var(--tx); border-color: var(--tx3); }
+    .chip .glyph { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.4; flex: 0 0 auto; }
+    .chip .count { font-family: var(--mono); font-size: 11px; opacity: 0.6; }
+    .chip.on { background: var(--tx); color: var(--bg); border-color: transparent; }
+    .chip.on .glyph { stroke: var(--accent); }
+    .chip.ghost { border-style: dashed; }
+    .chip-sep { width: 1px; align-self: stretch; margin: 4px 4px; background: var(--line2); }
+
+    /* ---------- Table ---------- */
     #table-container {
       overflow: auto;
-      max-height: calc(100vh - 250px);
-      border: 1px solid #e7e5e4;
-      border-radius: 8px;
+      max-height: 460px;
+      border-top: 0.5px solid var(--line);
     }
+    .empty {
+      padding: 36px 20px;
+      text-align: center;
+      color: var(--tx2);
+    }
+    .empty b { display: block; font-weight: 400; color: var(--tx); margin-bottom: 4px; }
+    .empty span { font-size: 12px; }
     table { width: 100%; border-collapse: collapse; }
     th {
       position: sticky;
       top: 0;
-      z-index: 1;
+      z-index: 4;
       text-align: left;
+      font-family: var(--mono);
       font-size: 11px;
-      font-weight: 500;
-      color: #78716c;
-      background: #fafaf9;
-      padding: 8px 10px;
-      border-bottom: 1px solid #e7e5e4;
-    }
-    th.check-col, td.check-col { width: 32px; text-align: center; }
-    td {
-      padding: 7px 10px;
-      border-bottom: 1px solid #f0eeeb;
-      vertical-align: middle;
-      background: #fff;
-    }
-    tr:last-child td { border-bottom: 0; }
-    tr:hover td { background: #f5f5f4; }
-    tr.checked td { background: #e7f0ea; }
-    tr.dirty td.family-cell,
-    td.param-dirty { background: #f8f1e7; }
-
-    .family-cell,
-    .param-cell {
-      position: relative;
-      min-width: 120px;
-      padding-right: 14px !important;
-    }
-    .param-cell.editable { cursor: cell; }
-    .param-cell .cell-value {
-      display: block;
-      min-height: 1.2em;
+      font-weight: 400;
+      color: var(--tx3);
+      background: var(--bg);
+      padding: 9px 12px 7px;
+      border-bottom: 0.5px solid var(--line);
       white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+    }
+    td {
+      position: relative;
+      padding: 9px 12px;
+      border-bottom: 0.5px solid var(--line);
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    th.check-col, td.check-col { width: 44px; padding-left: 20px; padding-right: 4px; }
+    td.check-col input, th.check-col input { accent-color: var(--accent); width: 13px; height: 13px; cursor: pointer; }
+    tbody tr:hover td { background: var(--s1); }
+    tr.sel td { background: var(--accent-soft); }
+    tr.sel td.check-col { box-shadow: inset 2px 0 0 var(--accent); }
+    td.muted, .readonly { color: var(--tx3); }
+    td .lock { color: var(--tx3); width: 13px; height: 13px; }
+    td.level-cell { font-family: var(--mono); font-size: 12px; color: var(--tx2); }
+    .cat-cell { display: inline-flex; align-items: center; gap: 6px; color: var(--tx2); }
+    .cat-cell .glyph { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.4; }
+
+    .family-cell, .param-cell { min-width: 130px; max-width: 280px; }
+    .param-cell.editable { cursor: cell; }
+    .param-cell .cell-value { display: block; min-height: 1.2em; overflow: hidden; text-overflow: ellipsis; }
+    .param-cell .cell-value:empty::before { content: "·"; color: var(--tx3); }
+    .hl {
+      background: var(--accent-hl);
+      color: var(--hl-tx);
+      padding: 1px 6px;
+      margin-left: -6px;
+      border-radius: 4px;
     }
     .param-cell input.cell-edit {
       width: 100%;
       font: inherit;
       font-size: 13px;
+      color: var(--tx);
+      background: transparent;
       border: 0;
       outline: none;
-      background: transparent;
-      color: inherit;
-      padding: 0;
-      margin: 0;
-    }
-    td.cell-selected {
-      outline: 2px solid #1d4ed8;
-      outline-offset: -2px;
-      z-index: 2;
-      box-shadow: inset 0 0 0 1px #1d4ed8;
-    }
-    td.fill-range {
-      outline: 2px solid #1d4ed8;
-      outline-offset: -2px;
-      background: #eff6ff !important;
-      z-index: 1;
     }
     .type-face {
-      display: block;
-      width: 100%;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 100%;
       text-align: left;
-      border: 0;
-      background: transparent;
-      color: inherit;
-      font: inherit;
-      font-size: 13px;
-      padding: 2px 0;
-      border-radius: 0;
-      cursor: pointer;
+      padding: 1px 0;
     }
-    .type-face:hover { color: #1d4ed8; }
-    .family-cell .readonly,
-    .param-cell .readonly { color: #a8a29e; }
+    .type-face .label { overflow: hidden; text-overflow: ellipsis; }
+    .type-face .chev { color: var(--tx3); opacity: 0; width: 12px; height: 12px; }
+    .type-face:hover .chev, td.cell-selected .type-face .chev { opacity: 1; }
+    .type-face:hover { color: var(--accent-tx); }
+
+    td.cell-selected { outline: 1.5px solid var(--accent); outline-offset: -1.5px; }
+
+    .fill-handle {
+      position: absolute;
+      right: -1px;
+      bottom: -1px;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-hl);
+      opacity: 0;
+      cursor: crosshair;
+      z-index: 3;
+    }
+    :root[data-theme="dark"] .fill-handle { box-shadow: 0 0 10px var(--accent); }
+    td.cell-selected .fill-handle,
+    .param-cell.editable:hover .fill-handle,
+    tr.dirty td.family-cell .fill-handle,
+    td.family-cell:hover .fill-handle { opacity: 1; }
+    td.family-cell .fill-handle.idle { display: none; }
+
+    body.filling { cursor: crosshair; user-select: none; }
+    body.filling .fill-handle { pointer-events: none; }
+    body.filling td.cell-selected:not(.fill-source) { outline-color: transparent; }
+    td.fill-source { outline: 1.5px solid var(--accent); outline-offset: -1.5px; }
+    td.fill-range, td.fill-skip {
+      background: var(--accent-soft) !important;
+      box-shadow: inset 1.5px 0 0 var(--accent), inset -1.5px 0 0 var(--accent);
+    }
+    td.fill-range.fill-end, td.fill-skip.fill-end {
+      box-shadow: inset 1.5px 0 0 var(--accent), inset -1.5px 0 0 var(--accent), inset 0 -1.5px 0 var(--accent);
+    }
+    td.fill-range.fill-start, td.fill-skip.fill-start {
+      box-shadow: inset 1.5px 0 0 var(--accent), inset -1.5px 0 0 var(--accent), inset 0 1.5px 0 var(--accent);
+    }
+    td.fill-range > *, td.fill-skip > * { visibility: hidden; }
+    td.fill-range::before, td.fill-skip::before {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      max-width: calc(100% - 24px);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    td.fill-range::before { content: attr(data-fill-value); color: var(--accent-tx); font-style: italic; }
+    td.fill-range[data-fill-old]::after {
+      content: attr(data-fill-old);
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 11px;
+      color: var(--tx3);
+      text-decoration: line-through;
+      max-width: 45%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    td.fill-skip::before { content: attr(data-fill-skip); font-family: var(--mono); font-size: 11px; color: var(--tx3); }
+
+    .fill-badge {
+      position: fixed;
+      z-index: 60;
+      pointer-events: none;
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 3px 9px;
+      border-radius: 99px;
+      background: var(--accent);
+      color: var(--on-accent);
+      box-shadow: var(--glow);
+      white-space: nowrap;
+    }
+
+    /* ---------- Type menu ---------- */
     #type-menu {
       position: fixed;
-      z-index: 30;
+      z-index: 50;
       display: none;
-      width: 240px;
-      max-height: 220px;
+      width: 260px;
+      max-height: 240px;
       overflow: auto;
       padding: 4px;
-      background: #fff;
-      color: #1c1917;
-      border: 1px solid #e7e5e4;
-      border-radius: 8px;
-      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+      background: var(--bg);
+      border: 0.5px solid var(--line2);
+      border-radius: 12px;
+      box-shadow: var(--pop-shadow);
     }
     #type-menu.open { display: block; }
-    #type-menu .menu-status {
-      padding: 8px;
-      font-size: 12px;
-      color: #78716c;
-    }
+    #type-menu .menu-status { padding: 8px; font-size: 12px; color: var(--tx3); }
+    #type-menu .menu-hint { padding: 6px 8px 4px; font-family: var(--mono); font-size: 10px; color: var(--tx3); }
     #type-menu button {
       display: flex;
       flex-direction: column;
@@ -421,124 +481,212 @@
       gap: 1px;
       width: 100%;
       text-align: left;
-      border: 0;
-      background: transparent;
-      color: inherit;
-      border-radius: 4px;
+      border-radius: 8px;
       padding: 6px 8px;
       font-size: 12px;
     }
-    #type-menu button small {
-      color: #a8a29e;
+    #type-menu button small { color: var(--tx3); font-size: 11px; }
+    #type-menu button:hover { background: var(--s1); }
+    #type-menu button.on { background: var(--accent-soft); color: var(--accent-tx); }
+
+    /* ---------- Changes panel ---------- */
+    .changes { display: flex; flex-direction: column; gap: 6px; padding: 16px 20px; }
+    .change {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 6px 10px 14px;
+      border-radius: 12px;
+      border: 0.5px solid var(--line);
+    }
+    .change .kind { font-family: var(--mono); font-size: 11px; color: var(--tx3); width: 44px; flex: 0 0 auto; }
+    .change .what { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .change .what .hl { margin-left: 0; }
+    .change .scope { font-family: var(--mono); font-size: 11px; color: var(--tx3); white-space: nowrap; }
+    .change .remove { width: 26px; height: 26px; border-radius: 99px; display: inline-flex; align-items: center; justify-content: center; color: var(--tx3); }
+    .change .remove:hover { color: var(--tx); background: var(--s1); }
+
+    .checks-empty { padding: 44px 20px; text-align: center; color: var(--tx2); }
+    .checks-empty svg { width: 40px; height: 40px; margin-bottom: 10px; }
+    .checks-empty .ring { stroke: var(--line2); fill: none; }
+    .checks-empty .dot { fill: var(--accent); }
+    .checks-empty b { display: block; font-weight: 400; color: var(--tx); margin-bottom: 4px; }
+    .checks-empty span { font-size: 12px; }
+    .soon {
+      display: inline-block;
+      margin-top: 12px;
+      font-family: var(--mono);
       font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 99px;
+      border: 0.5px dashed var(--line2);
+      color: var(--tx3);
     }
-    #type-menu button:hover,
-    #type-menu button.on {
-      background: #f5f5f4;
+
+    /* ---------- Dock ---------- */
+    .dock {
+      position: sticky;
+      bottom: 12px;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 14px 16px 12px;
+      padding: 6px 6px 6px 16px;
+      border-radius: 99px;
+      background: var(--dock-bg);
+      border: 0.5px solid var(--dock-line);
+      color: var(--dock-tx);
     }
-    .fill-handle {
-      position: absolute;
-      right: 1px;
-      bottom: 1px;
-      width: 8px;
-      height: 8px;
-      margin: 0;
-      padding: 0;
-      border: 0;
-      border-radius: 1px;
-      background: #1d4ed8;
-      opacity: 0;
-      cursor: crosshair;
-      z-index: 3;
+    .dock-group { display: flex; align-items: center; gap: 2px; }
+    .dock .count { font-family: var(--mono); font-size: 12px; margin-right: 8px; white-space: nowrap; }
+    .dock .pending-label { font-family: var(--mono); font-size: 12px; color: var(--dock-tx2); margin-right: 6px; white-space: nowrap; }
+    .db {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: 99px;
+      font-size: 12px;
+      color: var(--dock-tx2);
+      white-space: nowrap;
     }
-    td.cell-selected .fill-handle,
-    td.family-cell:hover .fill-handle,
-    tr.dirty td.family-cell .fill-handle,
-    body.filling .fill-handle { opacity: 1; }
-    body.filling { cursor: crosshair; user-select: none; }
-    body.filling .fill-handle { pointer-events: none; }
-    body.filling td.cell-selected { outline-color: transparent; box-shadow: none; }
+    .db:hover { color: var(--dock-tx); background: var(--dock-hover); }
+    .db.pri { background: var(--accent); color: var(--on-accent); font-weight: 500; box-shadow: var(--glow); }
+    .db.pri:hover { filter: brightness(1.08); }
+    .db:disabled { opacity: 0.4; cursor: default; background: transparent; }
+    .db.pri:disabled { background: var(--accent); }
+
+    @media (max-width: 560px) {
+      .stats { gap: 12px 24px; }
+      .stat b { font-size: 22px; }
+      .dock { border-radius: 18px; }
+    }
   </style>
 </head>
 <body>
-  <header class="head">
-    <h1>MCP Apps · Schedule</h1>
-    <p class="status" id="status">Waiting…</p>
-  </header>
-
-  <div class="metrics">
-    <div class="metric warn">
-      <b id="kpi-errors">—</b>
-      <span id="kpi-errors-sub">Warnings</span>
+  <div class="app">
+    <div class="orbit-clip" aria-hidden="true">
+      <svg class="orbit" width="280" height="280" viewBox="0 0 280 280">
+        <circle class="o1" cx="140" cy="140" r="118" fill="none" stroke-width="0.6" />
+        <circle class="o2" cx="140" cy="140" r="78" fill="none" stroke-width="0.6" />
+        <circle class="o4" cx="29" cy="100" r="14" />
+        <circle class="o3" cx="29" cy="100" r="5" />
+      </svg>
     </div>
-    <div class="metric">
-      <b id="kpi-detach">—</b>
-      <span id="kpi-detach-sub">Detachable</span>
-    </div>
-  </div>
 
-  <div id="composition">
-    <svg id="donut-svg" width="0" height="0" aria-hidden="true"></svg>
-    <ul class="donut-legend" id="donut-legend"></ul>
-  </div>
-
-  <div class="actions">
-    <button id="btn-confirm" type="button">Apply in Revit</button>
-    <div class="segment">
-      <label><input type="radio" name="apply-mode" value="select" checked /> Select</label>
-      <label><input type="radio" name="apply-mode" value="isolate" /> Isolate</label>
-    </div>
-    <button id="btn-apply-types" type="button" disabled>Apply types</button>
-    <button id="btn-apply-params" type="button" disabled>Apply parameters</button>
-  </div>
-  <div class="links">
-    <button id="btn-select-all" type="button">Select all</button>
-    <button id="btn-deselect-all" type="button">Deselect</button>
-    <button id="btn-clear-pending" type="button" disabled>Clear edits</button>
-    <button id="btn-reset-view" type="button">Reset isolate</button>
-    <button id="btn-refresh" type="button">Refresh</button>
-    <button id="btn-clear-filters" type="button">Clear filters</button>
-  </div>
-
-  <div class="filters">
-    <label class="filter search">Search
-      <input id="filter-search" type="search" placeholder="Name, type, level…" />
-    </label>
-    <label class="filter">Category
-      <select id="filter-category"><option value="">All</option></select>
-    </label>
-    <label class="filter">Level
-      <select id="filter-level"><option value="">All</option></select>
-    </label>
-    <label class="filter">Family
-      <select id="filter-family"><option value="">All</option></select>
-    </label>
-    <label class="filter">Type
-      <select id="filter-type"><option value="">All</option></select>
-    </label>
-    <label class="filter">Link
-      <select id="filter-link"><option value="">All</option></select>
-    </label>
-    <label class="filter">Parameters
-      <div class="ms-wrap" id="param-picker">
-        <button type="button" class="ms-trigger" id="param-picker-trigger" aria-haspopup="listbox" aria-expanded="false">
-          <span class="ms-label" id="param-picker-label">None selected</span>
-          <span class="ms-caret" aria-hidden="true">▾</span>
-        </button>
-        <div class="ms-panel" id="param-picker-panel" role="listbox" aria-multiselectable="true">
-          <input id="param-picker-search" type="search" placeholder="Search parameters…" autocomplete="off" />
-          <div class="ms-actions">
-            <button type="button" id="param-picker-all">Select visible</button>
-            <button type="button" id="param-picker-none">Clear</button>
-          </div>
-          <ul class="ms-list" id="param-picker-list"></ul>
+    <header class="top">
+      <div class="brand">
+        <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+          <circle class="logo-ring" cx="11" cy="14" r="9" fill="none" stroke-width="1.4" />
+          <circle class="logo-dot" cx="19" cy="14" r="5" />
+        </svg>
+        <div style="min-width: 0">
+          <h1>Schedule</h1>
+          <p class="meta" id="status">Waiting for Revit…</p>
         </div>
       </div>
-    </label>
+      <div class="top-actions">
+        <button class="icon-btn" id="btn-refresh" type="button" title="Reload from Revit" aria-label="Reload from Revit">
+          <svg class="i" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7" /><path d="M20 5v6h-6" /></svg>
+        </button>
+        <button class="icon-btn" id="btn-theme" type="button" title="Toggle light and dark" aria-label="Toggle light and dark">
+          <svg class="i" id="theme-icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
+          <svg class="i" id="theme-icon-moon" viewBox="0 0 24 24" hidden><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" /></svg>
+        </button>
+      </div>
+    </header>
+
+    <section class="stats" aria-label="Model summary">
+      <div class="stat"><b id="kpi-total">—</b><span>elements</span></div>
+      <div class="stat"><b id="kpi-errors">—</b><span><i class="sig danger"></i>warnings</span></div>
+      <div class="stat"><b id="kpi-detach">—</b><span>detachable</span></div>
+      <div class="stat idle" id="kpi-pending-wrap"><b id="kpi-pending">000</b><span><i class="sig"></i>unsaved</span></div>
+    </section>
+
+    <nav class="tabs" role="tablist">
+      <button class="tab on" type="button" role="tab" data-tab="elements" aria-selected="true">
+        <span class="n">01</span>Elements <span class="tab-count" id="tab-count-elements"></span>
+      </button>
+      <button class="tab" type="button" role="tab" data-tab="changes" aria-selected="false">
+        <span class="n">02</span>Changes <span class="tab-count" id="tab-count-changes"></span>
+      </button>
+      <button class="tab" type="button" role="tab" data-tab="checks" aria-selected="false">
+        <span class="n">03</span>Checks
+      </button>
+    </nav>
+
+    <section class="panel" id="panel-elements" role="tabpanel">
+      <div class="toolbar">
+        <label class="search">
+          <svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
+          <input id="filter-search" type="search" placeholder="Search elements" autocomplete="off" />
+        </label>
+        <div class="pop-wrap" id="filters-pop">
+          <button class="text-link" type="button" id="filters-trigger" aria-expanded="false">filters<sup id="filters-count"></sup></button>
+          <div class="popover">
+            <label class="field">level<select id="filter-level"><option value="">All</option></select></label>
+            <label class="field">family<select id="filter-family"><option value="">All</option></select></label>
+            <label class="field">type<select id="filter-type"><option value="">All</option></select></label>
+            <label class="field">link<select id="filter-link"><option value="">All</option></select></label>
+            <div class="pop-actions">
+              <button class="text-link" type="button" id="btn-clear-filters">clear all</button>
+            </div>
+          </div>
+        </div>
+        <div class="pop-wrap" id="param-picker">
+          <button class="text-link" type="button" id="param-picker-trigger" aria-haspopup="listbox" aria-expanded="false">
+            columns<sup id="param-picker-label"></sup>
+          </button>
+          <div class="popover" role="listbox" aria-multiselectable="true">
+            <input id="param-picker-search" type="search" placeholder="Search parameters" autocomplete="off" />
+            <div class="pop-actions">
+              <button class="text-link" type="button" id="param-picker-all">select visible</button>
+              <button class="text-link" type="button" id="param-picker-none">clear</button>
+            </div>
+            <ul class="ms-list" id="param-picker-list"></ul>
+          </div>
+        </div>
+      </div>
+      <div class="chips" id="chips"></div>
+      <div id="table-container"></div>
+    </section>
+
+    <section class="panel" id="panel-changes" role="tabpanel" hidden>
+      <div class="changes" id="changes-list"></div>
+    </section>
+
+    <section class="panel" id="panel-checks" role="tabpanel" hidden>
+      <div class="checks-empty">
+        <svg viewBox="0 0 40 40" aria-hidden="true">
+          <circle class="ring" cx="17" cy="20" r="13" stroke-width="1.2" />
+          <circle class="dot" cx="28" cy="20" r="6" />
+        </svg>
+        <b>Check your model against rules</b>
+        <span>Import a rule set, such as IFC-SG, to flag elements that fail.</span><br />
+        <span class="soon">coming soon</span>
+      </div>
+    </section>
+
+    <footer class="dock">
+      <div class="dock-group">
+        <span class="count" id="sel-count">0 in view</span>
+        <button class="db" type="button" id="btn-show" title="Select and zoom in Revit">Show in Revit</button>
+        <button class="db" type="button" id="btn-isolate" title="Isolate, select and zoom in Revit">Isolate</button>
+        <button class="db" type="button" id="btn-reset-view" title="Reset temporary isolate">Reset</button>
+      </div>
+      <div class="dock-group" id="dock-pending" hidden>
+        <span class="pending-label" id="pending-label"></span>
+        <button class="db" type="button" id="btn-discard">Discard</button>
+        <button class="db pri" type="button" id="btn-apply">Apply →</button>
+      </div>
+    </footer>
   </div>
 
-  <div id="table-container"></div>
   <div id="type-menu" role="listbox"></div>
+  <div class="fill-badge" id="fill-badge" hidden></div>
   <script type="module" src="./src/mcp-app.ts"></script>
 </body>
 </html>

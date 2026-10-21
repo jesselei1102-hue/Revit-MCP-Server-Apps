@@ -4,13 +4,26 @@ import {
   RESOURCE_MIME_TYPE,
 } from "@modelcontextprotocol/ext-apps/server";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { withRevitConnection } from "./utils/ConnectionManager.js";
 
-export const REVIT_REPORT_RESOURCE_URI = "ui://revit-report/app.html";
+/**
+ * Hosts cache UI resources by URI (Claude desktop keeps them across sessions), so the URI carries
+ * a content hash: every rebuilt app.html gets a new URI and is fetched fresh after a reconnect.
+ */
+async function versionedResourceUri(htmlPath: string): Promise<string> {
+  try {
+    const html = await fs.readFile(htmlPath);
+    const hash = createHash("sha256").update(html).digest("hex").slice(0, 12);
+    return `ui://revit-report/app-${hash}.html`;
+  } catch {
+    return "ui://revit-report/app.html";
+  }
+}
 
 const BATCH_SIZE = 100;
 const IDENTITY_KEYS = new Set([
@@ -395,6 +408,9 @@ async function loadScheduleData(args: {
 }
 
 export async function registerMcpApp(server: McpServer) {
+  const htmlPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp-app", "app.html");
+  const REVIT_REPORT_RESOURCE_URI = await versionedResourceUri(htmlPath);
+
   registerAppTool(
     server,
     "mcp_apps_get_schedule_data",
@@ -457,7 +473,6 @@ export async function registerMcpApp(server: McpServer) {
     }
   );
 
-  const htmlPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp-app", "app.html");
   const probeLogPath = path.join(
     path.dirname(fileURLToPath(import.meta.url)),
     "..",
