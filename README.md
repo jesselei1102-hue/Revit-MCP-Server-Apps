@@ -4,23 +4,38 @@
 
 Based on [mcp-servers-for-revit](https://github.com/mcp-servers-for-revit/mcp-servers-for-revit).
 
-This fork keeps the original Revit MCP bridge (server + plugin + command set) and adds **MCP Apps UI**, **Revit 2027** support, and a set of new tools focused on querying, navigating, and editing the model from Cursor / other MCP clients.
+This fork keeps the original Revit MCP bridge (server + plugin + command set) and adds **MCP Apps UI**, **model checks**, **Revit 2027** support, and tools for querying, navigating, and editing the model from Cursor / other MCP clients.
 
-The Schedule App is designed as a **HITL (human-in-the-loop) workflow**: the AI opens and loads the model data; **you** review, filter, edit, and confirm before writes go back to Revit.
+The Schedule App is a **HITL (human-in-the-loop) workflow**: the AI opens and loads model data; **you** review, filter, edit, run checks, and confirm before writes go back to Revit.
 
 ## What’s new in this fork
 
 ### MCP Apps · Schedule (`mcp_apps_get_schedule_data`)
 
-Interactive schedule UI mounted as an MCP App:
+Interactive schedule UI (Ultraviolet theme, light / dark) with four tabs:
 
-- Loads host (+ linked) model instances into a filterable table
-- Shows **editable instance parameters** (skips calculated quantities like Area / Volume)
-- **Parameters** multi-select next to Link — search and choose which columns to show
-- Click a cell for a clear selection border; drag the fill handle to paint values down a column
-- Double-click to edit → **Apply parameters** writes back via `SetParameter`
-- Type column still supports ChangeType + fill + **Apply types**
-- Select / Isolate / zoom helpers for filtered rows
+| Tab | Role |
+| --- | --- |
+| **01 Elements** | Filterable table of host (+ linked) instances; editable instance parameters |
+| **02 Changes** | Pending type / parameter edits before Apply |
+| **03 Checks** | Import / manage rules, enable/disable, run checks |
+| **04 Dashboard** | Read-only last run, trend, and fix suggestions |
+
+**01 Elements**
+
+- Editable instance parameters (skips calculated quantities like Area / Volume)
+- Search + filters (category / level / family / type / link) and **columns** multi-select
+- Cell selection border; drag the fill handle to paint values down a column
+- Double-click to edit → Apply writes back via `SetParameter` / `ChangeType`
+- Dock: Show in Revit / Isolate / Reset; section-box and category-aware selection helpers
+- Linked rows stay read-only for edits
+
+**03 Checks · 04 Dashboard**
+
+- Import Autodesk Model Checker checksets (`.xml`, e.g. IFC-SG) or create rules via the agent
+- Run checks against the open host model; results stored per project in SQLite
+- Dashboard shows pass/fail summary, severity counts, top fixes, and recent-run trend
+- Suggestions are guidance only — edits still happen in **01** (no auto-fix writeback)
 
 ### Why MCP Apps (vs plain Read / Write tools)
 
@@ -30,34 +45,44 @@ MCP Apps and normal MCP tools solve different jobs. Use both. The Schedule App i
 |---|---|---|
 | Who drives | **You** — click, filter, edit, drag-fill, then Apply | **The AI** — call tools from chat |
 | Workflow | Human-in-the-loop: inspect → edit → confirm | Agent-driven: prompt → tool → result |
-| Best for | Scan a table, pick columns, tweak many instance params | Automation: “set all door Marks…”, scripted workflows |
-| Feedback | Live table in the client | JSON / text back in the conversation |
+| Best for | Scan a table, pick columns, tweak params, review check results | Automation: “set all door Marks…”, scripted workflows |
+| Feedback | Live table / dashboard in the client | JSON / text back in the conversation |
 
 **Tokens**
 
-- App: load the schedule once into the UI; filtering, column picks, and cell edits stay in the frontend — they do **not** re-enter the model context on every click.
-- Tools-only: large tables often get pasted into chat; each “read → decide → write” loop burns another round of input/output tokens.
+- App: load once into the UI; filtering, column picks, and cell edits stay in the frontend — they do **not** re-enter the model context on every click.
+- Tools-only: large tables often get pasted into chat; each “read → decide → write” loop burns another round of tokens.
 
-For “look at the list and fix parameters,” an App usually uses **far fewer conversation tokens** than asking the model to re-read and rewrite rows in chat.
+**Rule of thumb:** HITL table / check review → MCP Apps; hands-off automation → tools. Open the Schedule App, then let tools handle scripted follow-ups.
 
-**Efficiency**
+### Model checks (server)
 
-- App: Excel-like — fast for human review and batch tweaks after one open.
-- Tools: fewer wall-clock seconds for fully automatic, rule-clear jobs; slower when a person must describe every small edit in natural language.
+Rule engine lives in the Node MCP server (`server/src/checks/`):
 
-**Rule of thumb:** HITL table work → MCP Apps; hands-off automation → tools. Opening the Schedule App (HITL) then letting tools handle scripted follow-ups is a good combo.
+- Parse Model Checker XML → validated rule JSON
+- Collect host-model element/parameter data from Revit (read-only)
+- Evaluate rules → pass/fail + fix text
+- Persist rulesets and run history in SQLite (`revit-data.db`)
 
-### Revit 2027
+Chat-facing tool results stay **summary-sized**; the App dashboard loads full detail via structured content.
 
-- Plugin + command set build configs for **R27 / Revit 2027** (alongside existing 2020–2026)
-- Deploy layout under `%AppData%\Autodesk\Revit\Addins\2027\...`
+### Revit 2020–2027
+
+- Plugin + command set configs for **R20–R27** (including Revit 2027)
+- Debug deploy under `%AppData%\Autodesk\Revit\Addins\<year>\...`
 
 ### New / extended tools
 
 | Tool | Description |
 | ---- | ----------- |
-| `mcp_apps_get_schedule_data` | MCP Apps schedule report (editable params UI) |
-| `query_model` | Multi-criteria element query (returns Ids + analysis) |
+| `mcp_apps_get_schedule_data` | MCP Apps schedule UI (Elements / Changes / Checks / Dashboard) |
+| `rules_import_checkset` | Import a Model Checker `.xml` checkset |
+| `rules_upsert` | Create or update custom rules (e.g. from natural language) |
+| `rules_list` | List rulesets / rules |
+| `rules_set_enabled` | Enable or disable rules |
+| `checks_run` | Run enabled rules against the open host model |
+| `checks_get_results` | Latest (or specific) run summary + trend |
+| `query_model` | Multi-criteria element query |
 | `get_element_data` | Element info + parameter modes including `EditableInstanceParameters` |
 | `select_elements` | Select elements by Id |
 | `zoom_to_elements` | Zoom to elements |
@@ -106,6 +131,10 @@ dotnet build plugin/RevitMCPPlugin.csproj -c "Debug R27"
 
 # Revit 2026
 dotnet build commandset/RevitMCPCommandSet.csproj -c "Debug R26"
+
+# Revit 2023
+dotnet build commandset/RevitMCPCommandSet.csproj -c "Debug R23"
+dotnet build plugin/RevitMCPPlugin.csproj -c "Debug R23"
 ```
 
 Debug builds copy into:
@@ -116,15 +145,19 @@ Debug builds copy into:
 
 Then open Revit → ribbon **MCP On** → call `mcp_apps_get_schedule_data` from the client.
 
+Typical HITL loop: open the App → edit in **01** / review **02** → import rules & **checks_run** → read **04 Dashboard** → fix in **01**.
+
 ## Project layout
 
 ```
-├── server/           # MCP server + MCP Apps (schedule UI)
-│   ├── mcp-app/      # Schedule app (HTML/TS)
-│   └── src/mcpApp.ts
-├── plugin/           # Revit add-in (WebSocket bridge, MCP toggle)
-├── commandset/       # Revit API commands (incl. public query / SetParameter)
+├── server/                 # MCP server + MCP Apps
+│   ├── mcp-app/            # Schedule app UI (HTML/TS)
+│   ├── src/mcpApp.ts       # App tool + UI resource
+│   └── src/checks/         # Rules, collector, engine, store, MCP tools
+├── plugin/                 # Revit add-in (socket bridge, MCP toggle)
+├── commandset/             # Revit API commands
 ├── command.json
+├── BACKLOG.md              # Parked ideas
 └── LICENSE
 ```
 
