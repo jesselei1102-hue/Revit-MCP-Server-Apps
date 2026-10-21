@@ -76,6 +76,10 @@ describe("project identity and linked counts", () => {
     const send: Send = async () => ok({ name: "Snowdon Towers", path: "C:/m.rvt" });
     expect(await readProjectIdentity(send)).toEqual({ name: "Snowdon Towers", path: "C:/m.rvt" });
   });
+  it("refuses to guess when Revit returns no document name", async () => {
+    await expect(readProjectIdentity(async () => ok({}))).rejects.toThrow(/open Revit document/);
+    await expect(readProjectIdentity(async () => ok(null))).rejects.toThrow(/open Revit document/);
+  });
   it("counts linked references per category and tolerates failures", async () => {
     const send: Send = async (_c, params) => {
       const cat = (params as { input: { categories: string[] } }).input.categories[0];
