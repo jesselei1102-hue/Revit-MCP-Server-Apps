@@ -67,7 +67,8 @@ export function createChecksApi(app: App) {
     return (result.structuredContent ?? {}) as T;
   }
   return {
-    listRules: async () => (await call<{ rulesets: RulesetView[] }>("rules_list")).rulesets ?? [],
+    // The app asks for full detail; the tools default to small summaries for the model.
+    listRules: async () => (await call<{ rulesets: RulesetView[] }>("rules_list", { detail: "full" })).rulesets ?? [],
     setEnabled: (target: { ids?: string[]; rulesetId?: string; group?: string }, enabled: boolean) =>
       call<{ changed: number }>("rules_set_enabled", { ...target, enabled }),
     importXml: (xml: string, name?: string) =>
@@ -77,7 +78,8 @@ export function createChecksApi(app: App) {
       return call<{ saved: number }>("rules_upsert", { rules: [body] });
     },
     runChecks: async () => (await call<{ runId: number }>("checks_run", { wait: false })).runId,
-    getResults: (runId?: number) => call<ResultsView>("checks_get_results", runId != null ? { runId } : {}),
+    getResults: (runId?: number) =>
+      call<ResultsView>("checks_get_results", runId != null ? { runId, detail: "full" } : { detail: "full" }),
   };
 }
 
