@@ -19,7 +19,7 @@ const text = (t: string) => [{ type: "text" as const, text: clip(t) }];
 const fail = (message: string) => ({ content: text(message), isError: true });
 /** Rule-set id from its name: readable for any script (CJK included) plus a hash, so two names never collide. */
 const slug = (s: string) => {
-  const base = s.normalize("NFKC").toLowerCase().replace(/[^p{L}p{N}]+/gu, "-").replace(/^-|-$/g, "").slice(0, 40) || "ruleset";
+  const base = s.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "").slice(0, 40) || "ruleset";
   return `${base}-${createHash("sha1").update(s).digest("hex").slice(0, 6)}`;
 };
 const time = (ms: number | null) => (ms ? new Date(ms).toTimeString().slice(0, 5) : "—");
