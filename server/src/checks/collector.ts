@@ -69,8 +69,10 @@ export async function readProjectIdentity(send: Send): Promise<{ name: string; p
   const value = (await runScript(send, "return new { name = document.Title, path = document.PathName };")) as {
     name?: string;
     path?: string;
-  };
-  return { name: value?.name || "Untitled", path: value?.path ?? "" };
+  } | null;
+  // Never guess: a run filed under a made-up project would vanish from that model's dashboard.
+  if (!value?.name) throw new Error("Couldn't read the open Revit document (is a model open and Revit idle?)");
+  return { name: value.name, path: value.path ?? "" };
 }
 
 /** Linked-model element counts per category (statistics only). Failed categories are left out. */
