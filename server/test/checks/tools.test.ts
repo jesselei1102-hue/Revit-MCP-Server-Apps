@@ -83,6 +83,7 @@ describe("check tools", () => {
     await call("rules_import_checkset", { xml: mini, name: "节能检查" });
     const full = (await call("rules_list", { detail: "full" })).structuredContent.rulesets;
     expect(full.map((s: any) => s.name).sort()).toEqual(["节能检查", "防火检查"]);
+    expect(full.map((s: any) => s.id).sort()).toEqual([expect.stringMatching(/^节能检查-[0-9a-f]{6}$/), expect.stringMatching(/^防火检查-[0-9a-f]{6}$/)]);
     const [a, b] = full;
     const ruleA = a.rules.find((r: any) => r.supported && r.enabled);
     await call("rules_set_enabled", { ids: [ruleA.id], enabled: false });
