@@ -43,7 +43,9 @@ function convertCheck(check: XmlNode): Pick<Rule, "scope" | "require"> {
         if (f.Property !== "Is Element Type" || f.Condition !== "Equal") {
           throw new Unsupported(`type/instance filter "${f.Property} ${f.Condition}"`);
         }
-        elementKind = truthy ? "type" : "instance";
+        // Element-type checks need type elements collected; not supported yet.
+        if (truthy) throw new Unsupported("checks on element types are not supported yet");
+        elementKind = "instance";
         break;
       case "Parameter": {
         const param = f.Property;
@@ -106,7 +108,8 @@ export function parseModelCheckerXml(
     if (section.Check?.length && !groups.includes(group)) groups.push(group);
     for (const check of section.Check ?? []) {
       const base = {
-        id: check.ID,
+        // Scoped by rule set: two imports of the same checkset must not share rule ids.
+        id: `${opts.rulesetId}:${check.ID}`,
         rulesetId: opts.rulesetId,
         group,
         name: check.CheckName || check.ID,

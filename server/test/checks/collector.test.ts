@@ -41,6 +41,8 @@ describe("buildCollectScript", () => {
     const script = buildCollectScript("OST_Doors", ["Mark"]);
     expect(script).not.toMatch(/Transaction|\.Delete\(|\.Set\(|\.Create/);
     expect(script).toMatch(/FilteredElementCollector/);
+    // ElementId.Value exists only from Revit 2024; ToString() works on every version.
+    expect(script).not.toMatch(/Id.Value|typeId.Value/);
   });
 });
 
@@ -64,10 +66,27 @@ describe("collect", () => {
     expect(calls.every((c) => (c as { params: { transactionMode: string } }).params.transactionMode === "none")).toBe(true);
   });
 
-  it("treats an unsuccessful script result as an unavailable category", async () => {
-    const send: Send = async () => ({ success: false, result: "", errorMessage: "CS0103: bad name" });
-    const { unavailable } = await collect(send, new Map([["OST_Doors", ["Mark"]]]));
+  it("treats an unsuccessful script result as an unavailable category and carries on", async () => {
+    let calls = 0;
+    const send: Send = async () => (calls++, { success: false, result: "", errorMessage: "CS0103: bad name" });
+    const { unavailable, aborted } = await collect(send, new Map([["OST_Doors", ["Mark"]], ["OST_Walls", ["Mark"]]]));
     expect(unavailable.OST_Doors).toMatch(/CS0103/);
+    expect(calls).toBe(2);
+    expect(aborted).toBe(false);
+  });
+
+  it("stops after Revit stops answering and marks the rest unavailable", async () => {
+    let calls = 0;
+    const send: Send = async () => {
+      calls++;
+      throw new Error("Revit timed out");
+    };
+    const plan = new Map([["OST_Doors", ["Mark"]], ["OST_Walls", ["Mark"]], ["OST_Floors", ["Mark"]]]);
+    const { unavailable, aborted } = await collect(send, plan);
+    expect(calls).toBe(1);
+    expect(Object.keys(unavailable).sort()).toEqual(["OST_Doors", "OST_Floors", "OST_Walls"]);
+    expect(unavailable.OST_Walls).toMatch(/Revit timed out/);
+    expect(aborted).toBe(true);
   });
 });
 

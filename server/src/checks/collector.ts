@@ -48,7 +48,8 @@ foreach (var el in new FilteredElementCollector(document).OfCategory(bic).WhereE
         ps["i:" + n] = read(el.LookupParameter(n), false);
         ps["t:" + n] = typ == null ? null : read(typ.LookupParameter(n), true);
     }
-    list.Add(new { id = el.Id.Value, isType = false, typeId = typ == null ? (long?)null : typeId.Value, typeName = typ?.Name ?? "", level = lvl?.Name ?? "", @params = ps });
+    // long.Parse(ToString()) instead of the ElementId "Value" property, which only exists from Revit 2024.
+    list.Add(new { id = long.Parse(el.Id.ToString()), isType = false, typeId = typ == null ? (long?)null : long.Parse(typeId.ToString()), typeName = typ?.Name ?? "", level = lvl?.Name ?? "", @params = ps });
 }
 return list;
 `.trim();
@@ -61,8 +62,17 @@ function scriptResult(raw: unknown): unknown {
   return typeof root.result === "string" ? JSON.parse(root.result) : root.result;
 }
 
+/** Revit did not answer (timeout, disconnect) — as opposed to a script that ran and failed. */
+class TransportError extends Error {}
+
 async function runScript(send: Send, code: string): Promise<unknown> {
-  return scriptResult(await send("send_code_to_revit", { code, transactionMode: "none" }));
+  let raw: unknown;
+  try {
+    raw = await send("send_code_to_revit", { code, transactionMode: "none" });
+  } catch (error) {
+    throw new TransportError(error instanceof Error ? error.message : String(error));
+  }
+  return scriptResult(raw);
 }
 
 export async function readProjectIdentity(send: Send): Promise<{ name: string; path: string }> {
@@ -96,18 +106,26 @@ export async function collect(
   send: Send,
   plan: Map<string, string[]>,
   onProgress?: (done: number, total: number) => void
-): Promise<{ elements: CollectedElement[]; unavailable: Record<string, string> }> {
+): Promise<{ elements: CollectedElement[]; unavailable: Record<string, string>; aborted: boolean }> {
   const elements: CollectedElement[] = [];
   const unavailable: Record<string, string> = {};
   let done = 0;
+  let stopped: string | null = null;
   for (const [category, names] of plan) {
-    try {
-      const rows = (await runScript(send, buildCollectScript(category, names))) as Omit<CollectedElement, "category">[];
-      for (const row of rows ?? []) elements.push({ ...row, category });
-    } catch (error) {
-      unavailable[category] = error instanceof Error ? error.message : String(error);
+    if (stopped) {
+      // Revit stopped answering (e.g. a modal dialog): don't wait out a timeout per remaining category.
+      unavailable[category] = stopped;
+    } else {
+      try {
+        const rows = (await runScript(send, buildCollectScript(category, names))) as Omit<CollectedElement, "category">[];
+        for (const row of rows ?? []) elements.push({ ...row, category });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        unavailable[category] = message;
+        if (error instanceof TransportError) stopped = `Revit stopped answering: ${message}`;
+      }
     }
     onProgress?.(++done, plan.size);
   }
-  return { elements, unavailable };
+  return { elements, unavailable, aborted: stopped != null };
 }

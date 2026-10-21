@@ -19,6 +19,8 @@ type Deps = {
 };
 
 const POLL_MS = 1000;
+/** Stop polling a run that never finishes (e.g. the server died mid-run). */
+const POLL_GIVE_UP_MS = 10 * 60 * 1000;
 const MAX_FIXES = 20;
 
 export function createChecksView(deps: Deps) {
@@ -67,8 +69,8 @@ export function createChecksView(deps: Deps) {
 
   async function show(panel: "checks" | "dashboard") {
     activePanel = panel;
-    renderActive();
-    if (!loaded) await refresh();
+    renderActive(); // cached data first, then fresh: rules or runs may come from Claude meanwhile
+    await refresh();
   }
 
   // ------------------------------------------------------------------ 03 Checks
@@ -275,7 +277,7 @@ export function createChecksView(deps: Deps) {
     try {
       if (deps.app.getHostCapabilities()?.message) {
         await deps.app.sendMessage({ role: "user", content: [{ type: "text", text: prompt }] });
-        deps.setStatus("Sent to Claude — the rule appears here once it's created (refresh 03)");
+        deps.setStatus("Sent to Claude — the rule appears here once it's created (reopen 03 or press reload)");
       } else {
         await navigator.clipboard.writeText(prompt);
         deps.setStatus("Copied — paste it to Claude");
@@ -298,10 +300,18 @@ export function createChecksView(deps: Deps) {
     }
     deps.setStatus(`Check run #${runningId} started`);
     deps.onChange();
+    const pollStarted = Date.now();
     const poll = async () => {
       try {
         const res = await api.getResults(runningId ?? undefined);
         latest = res;
+        if (res.run?.status === "running" && Date.now() - pollStarted > POLL_GIVE_UP_MS) {
+          runningId = null;
+          deps.setStatus("The check is still running after 10 minutes — press reload later to see its result");
+          renderActive();
+          deps.onChange();
+          return;
+        }
         if (res.run?.status === "running") {
           deps.onChange();
           renderActive();

@@ -1,4 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
@@ -16,7 +17,11 @@ const MAX_FIXES = 50;
 const clip = (text: string) => (text.length > MAX_CONTENT ? `${text.slice(0, MAX_CONTENT - 1)}…` : text);
 const text = (t: string) => [{ type: "text" as const, text: clip(t) }];
 const fail = (message: string) => ({ content: text(message), isError: true });
-const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "ruleset";
+/** Rule-set id from its name: readable for any script (CJK included) plus a hash, so two names never collide. */
+const slug = (s: string) => {
+  const base = s.normalize("NFKC").toLowerCase().replace(/[^p{L}p{N}]+/gu, "-").replace(/^-|-$/g, "").slice(0, 40) || "ruleset";
+  return `${base}-${createHash("sha1").update(s).digest("hex").slice(0, 6)}`;
+};
 const time = (ms: number | null) => (ms ? new Date(ms).toTimeString().slice(0, 5) : "—");
 
 const defaultSend: Send = (command, params) =>
@@ -232,9 +237,13 @@ export async function registerCheckTools(server: McpServer, deps: { store?: Chec
         return fail(`Couldn't start the check: ${error instanceof Error ? error.message : String(error)}`);
       }
       activeRun = started.runId;
-      const finished = started.done.finally(() => {
-        activeRun = null;
-      });
+      const finished = started.done
+        .catch(() => {
+          // runChecks stores its own failures; never let a background run crash the server.
+        })
+        .finally(() => {
+          activeRun = null;
+        });
       if (wait === false) {
         return { content: text(`Started check run #${started.runId}.`), structuredContent: { runId: started.runId, status: "running" } };
       }

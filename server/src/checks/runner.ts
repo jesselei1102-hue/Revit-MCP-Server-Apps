@@ -93,12 +93,12 @@ export async function runChecks(
       const rules = store.enabledRules(opts.rulesetIds);
       const plan = planCollection(rules);
       store.updateProgress(runId, { stage: "collecting", done: 0, total: plan.size });
-      const { elements, unavailable } = await collect(send, plan, (d, t) =>
+      const { elements, unavailable, aborted } = await collect(send, plan, (d, t) =>
         store.updateProgress(runId, { stage: "collecting", done: d, total: t })
       );
       store.updateProgress(runId, { stage: "evaluating", done: 0, total: rules.length });
       const results = evaluate(rules, elements, unavailable);
-      const linked = await countLinked(send, [...plan.keys()]);
+      const linked = aborted ? {} : await countLinked(send, [...plan.keys()]);
       const summary = summarize(rules, results, elements, linked);
       const failedCats = Object.keys(unavailable);
       if (plan.size > 0 && failedCats.length === plan.size) {
@@ -107,7 +107,11 @@ export async function runChecks(
         store.finishRun(runId, results, summary, "done");
       }
     } catch (error) {
-      store.finishRun(runId, [], emptySummary(), "failed", error instanceof Error ? error.message : String(error));
+      try {
+        store.finishRun(runId, [], emptySummary(), "failed", error instanceof Error ? error.message : String(error));
+      } catch {
+        // Storage itself failed; the run row stays "running" and is marked interrupted on next start.
+      }
     }
   })();
   return { runId, done };

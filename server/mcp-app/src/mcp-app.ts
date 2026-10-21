@@ -2111,6 +2111,10 @@ btnApply.addEventListener("click", async () => {
 });
 
 btnRefresh.addEventListener("click", () => {
+  if (activeTab === "checks" || activeTab === "dashboard") {
+    void checks?.refresh();
+    return;
+  }
   if (busy) return;
   void reloadSchedule("Reloading from Revit…");
 });
