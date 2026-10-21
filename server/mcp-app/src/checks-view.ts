@@ -274,17 +274,26 @@ export function createChecksView(deps: Deps) {
       return;
     }
     const prompt = `Create a model check rule for the Revit Schedule app (use rules_upsert): ${description}`;
+    // Try ui/message even when the host doesn't declare it: Cursor handles it without listing the capability.
+    deps.setStatus("Sending to the agent…");
+    let sendError: unknown;
     try {
-      if (deps.app.getHostCapabilities()?.message) {
-        await deps.app.sendMessage({ role: "user", content: [{ type: "text", text: prompt }] });
+      const result = await deps.app.sendMessage({ role: "user", content: [{ type: "text", text: prompt }] });
+      if (!result?.isError) {
         deps.setStatus("Sent to the agent — the rule appears here once it's created (reopen 03 or press reload)");
-      } else {
-        await navigator.clipboard.writeText(prompt);
-        deps.setStatus("Copied — paste it to your agent");
+        if (input) input.value = "";
+        return;
       }
-      if (input) input.value = "";
+      sendError = new Error("the host rejected the message");
     } catch (error) {
-      deps.setStatus(`Couldn't send: ${error instanceof Error ? error.message : String(error)}`);
+      sendError = error;
+    }
+    try {
+      await navigator.clipboard.writeText(prompt);
+      deps.setStatus("Copied — paste it to your agent");
+      if (input) input.value = "";
+    } catch {
+      deps.setStatus(`Couldn't send (${sendError instanceof Error ? sendError.message : String(sendError)}) — copy the text and ask your agent`);
     }
   }
 
