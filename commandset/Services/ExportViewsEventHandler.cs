@@ -84,6 +84,7 @@ namespace RevitMCPCommandSet.Services
 
                     if (printable.Count > 0)
                     {
+#if REVIT2022_OR_GREATER
                         var options = new PDFExportOptions
                         {
                             Combine = false,
@@ -104,6 +105,9 @@ namespace RevitMCPCommandSet.Services
                         {
                             throw new Exception("PDF export failed - Revit API returned false. ");
                         }
+#else
+                        throw new Exception("PDF export requires Revit 2022 or newer.");
+#endif
                     }
                 }
                 else

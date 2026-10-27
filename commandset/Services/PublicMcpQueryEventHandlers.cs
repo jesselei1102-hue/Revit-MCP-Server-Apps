@@ -352,7 +352,11 @@ namespace RevitMCPCommandSet.Services
             if (linkDoc == null || scopeView == null)
                 return new List<Element>();
 
+#if REVIT2024_OR_GREATER
             FilteredElementCollector collector = new FilteredElementCollector(hostDoc, scopeView.Id, link.Id);
+#else
+            FilteredElementCollector collector = new FilteredElementCollector(linkDoc);
+#endif
             if (inclusion != "TypesOnly")
                 collector = collector.WhereElementIsNotElementType();
             else
