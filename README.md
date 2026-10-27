@@ -19,6 +19,10 @@ Interactive schedule UI (Ultraviolet theme, light / dark) with two tabs:
 | **01 Elements** | Filterable table of host (+ linked) instances; editable instance parameters; pending edits before Apply |
 | **02 Checks** | Model warnings, the last check run (pass rate, trend, fixes), then the rules to import, switch and run |
 
+![01 Elements](assets/schedule-elements.png)
+
+![02 Checks](assets/schedule-checks.png)
+
 **01 Elements**
 
 - Editable instance parameters (skips calculated quantities like Area / Volume)
