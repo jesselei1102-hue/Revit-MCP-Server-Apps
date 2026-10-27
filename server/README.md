@@ -70,6 +70,12 @@ npm install
 npm run build
 ```
 
+To try the Schedule window without Claude, Cursor or Revit, serve this folder after a build
+(`python -m http.server 8791 --bind 127.0.0.1`) and open `http://localhost:8791/mcp-app/dev/harness.html`.
+The mock host fills the window with made-up rows, rule sets and check results, and answers every write tool with a
+stub, so nothing reaches Revit. URL parameters: `theme=dark`, `checks=none|running|failed|done`, `slowrules=1`,
+`applyfail=1` (the second write fails, so an Apply stops part-way).
+
 ## License
 
 [MIT](https://github.com/mcp-servers-for-revit/mcp-servers-for-revit/blob/main/LICENSE)
