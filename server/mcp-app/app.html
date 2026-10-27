@@ -506,8 +506,14 @@
     .change .remove { width: 26px; height: 26px; border-radius: 99px; display: inline-flex; align-items: center; justify-content: center; color: var(--tx3); }
     .change .remove:hover { color: var(--tx); background: var(--s1); }
 
-    /* ---------- Checks (03) + Dashboard (04) ---------- */
+    /* ---------- Checks: model line, results, rules ---------- */
     .view { padding: 14px 20px 6px; display: flex; flex-direction: column; gap: 10px; }
+    .view-part { display: flex; flex-direction: column; gap: 10px; }
+    .model-line { font-family: var(--mono); font-size: 11px; color: var(--tx3); }
+    .run-head { display: flex; flex-direction: column; gap: 2px; }
+    .run-head b { font-weight: 500; }
+    .sec-title { font-size: 14px; font-weight: 500; margin-top: 10px; }
+    .notice.danger { color: var(--danger); }
     .lab {
       display: flex;
       align-items: center;
@@ -710,9 +716,6 @@
       <button class="tab" type="button" role="tab" data-tab="checks" aria-selected="false">
         <span class="n">03</span>Checks <span class="tab-count" id="tab-count-checks"></span>
       </button>
-      <button class="tab" type="button" role="tab" data-tab="dashboard" aria-selected="false">
-        <span class="n">04</span>Dashboard
-      </button>
     </nav>
 
     <section class="panel" id="panel-elements" role="tabpanel">
@@ -757,10 +760,6 @@
 
     <section class="panel" id="panel-checks" role="tabpanel" hidden>
       <div class="view" id="checks-view"></div>
-    </section>
-
-    <section class="panel" id="panel-dashboard" role="tabpanel" hidden>
-      <div class="view" id="dashboard-view"></div>
     </section>
 
     <footer class="dock">

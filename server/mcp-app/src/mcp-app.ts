@@ -1,6 +1,6 @@
 import { App, applyDocumentTheme, applyHostFonts } from "@modelcontextprotocol/ext-apps";
 import { createChecksView } from "./checks-view";
-import { plural } from "./format";
+import { failingCount, plural } from "./format";
 
 type TextContent = { type: string; text?: string };
 type ToolResult = {
@@ -36,7 +36,7 @@ type FilterState = {
 
 type ShowMode = "select" | "isolate";
 type Theme = "light" | "dark";
-type TabName = "elements" | "changes" | "checks" | "dashboard";
+type TabName = "elements" | "changes" | "checks";
 
 type FamilyTypeInfo = {
   FamilyTypeId?: number;
@@ -230,7 +230,7 @@ let paramPickerSearch = "";
 let paramPickerInitialized = false;
 let showAllCategories = false;
 let activeTab: TabName = "elements";
-/** 03 Checks + 04 Dashboard (checks-view.ts); assigned once the panels exist. */
+/** 03 Checks (checks-view.ts); assigned once the panel exists. */
 let checks: ReturnType<typeof createChecksView> | undefined;
 let busy = false;
 let dashboardStats: ScheduleData["dashboard"] | undefined;
@@ -288,7 +288,6 @@ const checksDockLabel = $("checks-dock-label");
 const btnRunChecks = $<HTMLButtonElement>("btn-run-checks");
 const tabCountChecks = $("tab-count-checks");
 const checksView = $("checks-view");
-const dashboardView = $("dashboard-view");
 const pendingLabel = $("pending-label");
 const btnDiscard = $<HTMLButtonElement>("btn-discard");
 const btnApply = $<HTMLButtonElement>("btn-apply");
@@ -1435,12 +1434,11 @@ function syncDock() {
   btnResetView.disabled = busy || allRows.length === 0;
 
   // 01/02 dock: selection + Apply. 03/04 dock: Run checks (one primary button per view).
-  const checksTab = activeTab === "checks" || activeTab === "dashboard";
-  const rulesOn = checks?.enabledCount() ?? null;
+  const checksTab = activeTab === "checks";
   dockSelect.hidden = checksTab;
   dockPending.hidden = checksTab || pending === 0;
   dockChecks.hidden = !checksTab;
-  tabCountChecks.textContent = rulesOn == null ? "" : String(rulesOn);
+  tabCountChecks.textContent = failingCount(checks?.summary() ?? null);
   checksDockLabel.textContent = checks?.dockLabel() ?? "";
   btnRunChecks.disabled = Boolean(checks?.isRunning());
   pendingLabel.textContent = `${pending} unsaved`;
@@ -1469,15 +1467,14 @@ function setTab(tab: TabName) {
   $("panel-elements").hidden = tab !== "elements";
   $("panel-changes").hidden = tab !== "changes";
   $("panel-checks").hidden = tab !== "checks";
-  $("panel-dashboard").hidden = tab !== "dashboard";
   closeTypeMenu();
   if (tab === "changes") renderChanges();
-  if (tab === "checks" || tab === "dashboard") void checks?.show(tab);
+  if (tab === "checks") void checks?.show();
   syncDock();
 }
 
 // ---------------------------------------------------------------------------
-// 03 Checks + 04 Dashboard — rendering and behaviour live in checks-view.ts (rules_* / checks_* tools).
+// 03 Checks — rendering and behaviour live in checks-view.ts (rules_* / checks_* tools).
 // ---------------------------------------------------------------------------
 
 const OST_TO_NAME = new Map(Object.entries(CATEGORY_TO_OST).map(([name, ost]) => [ost, name]));
@@ -1485,12 +1482,11 @@ const OST_TO_NAME = new Map(Object.entries(CATEGORY_TO_OST).map(([name, ost]) =>
 checks = createChecksView({
   app,
   checksView,
-  dashboardView,
+  modelStats: () => dashboardStats ?? null,
   setStatus: (message) => {
     status.textContent = message;
   },
   escapeHtml,
-  pad3,
   categoryGlyph,
   categoryName: (ost) => OST_TO_NAME.get(ost) ?? ost.replace(/^OST_/, "").replace(/([a-z])([A-Z])/g, "$1 $2"),
   onChange: () => syncDock(),
@@ -2111,7 +2107,7 @@ btnApply.addEventListener("click", async () => {
 });
 
 btnRefresh.addEventListener("click", () => {
-  if (activeTab === "checks" || activeTab === "dashboard") {
+  if (activeTab === "checks") {
     void checks?.refresh();
     return;
   }

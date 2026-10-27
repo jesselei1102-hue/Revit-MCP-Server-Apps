@@ -1,15 +1,17 @@
-// 03 Checks (rule sets, toggles, import, ask agent) and 04 Dashboard (read-only results) on the
-// rules_* / checks_* server tools. mcp-app.ts owns the tabs and the dock; this module owns the two panels.
+// 02 Checks on the rules_* / checks_* server tools, one page from top to bottom: the model line, the last run's
+// results, then the rule sets (toggles, import, ask agent). mcp-app.ts owns the tabs and the dock.
 import type { App } from "@modelcontextprotocol/ext-apps";
 import { createChecksApi, type ResultsView, type RuleView, type RulesetView, type Severity } from "./checks-api";
+import { fixesHeading, modelLine, pctText, rulesOnLabel } from "./format";
 
+type ModelStats = { warningCount?: number; errorCount?: number; detachableFamilyCount?: number };
 type Deps = {
   app: App;
   checksView: HTMLElement;
-  dashboardView: HTMLElement;
+  /** Model warnings and detachable families from the schedule load, for the line at the top. */
+  modelStats: () => ModelStats | null;
   setStatus: (message: string) => void;
   escapeHtml: (value: string) => string;
-  pad3: (value: number | undefined) => string;
   /** Glyph svg for a display category name ("Doors"). */
   categoryGlyph: (name: string) => string;
   /** OST_Doors → "Doors". */
@@ -24,15 +26,19 @@ const POLL_GIVE_UP_MS = 10 * 60 * 1000;
 const MAX_FIXES = 20;
 
 export function createChecksView(deps: Deps) {
-  const { escapeHtml: esc, pad3 } = deps;
+  const { escapeHtml: esc } = deps;
   const api = createChecksApi(deps.app);
   let rulesets: RulesetView[] = [];
   let latest: ResultsView | null = null;
   let loaded = false;
   let loading: Promise<void> | null = null;
   let runningId: number | null = null;
-  let activePanel: "checks" | "dashboard" | null = null;
   const expanded = new Set<string>();
+  // Results and rules redraw on their own: the run poll redraws results every second and must not wipe a rule
+  // being typed into the ask box.
+  deps.checksView.innerHTML = `<p class="model-line" data-part="model"></p><div class="view-part" data-part="results"></div>
+    <div class="view-part" data-part="rules"></div>`;
+  const part = (name: string) => deps.checksView.querySelector(`[data-part="${name}"]`) as HTMLElement;
 
   /** Node keys live in HTML attributes: keep them printable (the parser rewrites NUL). */
   const nodeKey = (setId: string, kind: string, name: string) => `${encodeURIComponent(setId)}:${kind}:${encodeURIComponent(name)}`;
@@ -63,17 +69,16 @@ export function createChecksView(deps: Deps) {
   }
 
   function renderActive() {
-    if (activePanel === "checks") renderChecks();
-    if (activePanel === "dashboard") renderDashboard();
+    renderResults();
+    renderRules();
   }
 
-  async function show(panel: "checks" | "dashboard") {
-    activePanel = panel;
+  async function show() {
     renderActive(); // cached data first, then fresh: rules or runs may come from the agent meanwhile
     await refresh();
   }
 
-  // ------------------------------------------------------------------ 03 Checks
+  // ------------------------------------------------------------------ rules
 
   const toggle = (attrs: string, rules: RuleView[], label: string) => {
     const on = rules.filter((r) => r.enabled).length;
@@ -171,8 +176,8 @@ export function createChecksView(deps: Deps) {
     return `${html}</div></div>`;
   }
 
-  function renderChecks() {
-    let html = `<div class="lab"><span>rule sets</span><span><input type="file" id="import-xml" accept=".xml,text/xml" hidden /><button type="button" class="text-link" data-act="import">import xml</button></span></div>`;
+  function renderRules() {
+    let html = `<h3 class="sec-title">Rules</h3><div class="lab"><span>rule sets</span><span><input type="file" id="import-xml" accept=".xml,text/xml" hidden /><button type="button" class="text-link" data-act="import">import xml</button></span></div>`;
     if (!loaded) html += `<div class="empty"><b>Loading rules…</b><span>Reading rule sets from the server.</span></div>`;
     else if (rulesets.length === 0) {
       html += `<div class="empty"><b>No rules yet</b><span>Import a Model Checker checkset (such as IFC-SG), or describe a rule below and the agent will create it.</span></div>`;
@@ -180,7 +185,10 @@ export function createChecksView(deps: Deps) {
     html += `<div class="lab"><span>create a rule</span></div>
       <label class="ask"><input id="rule-ask" type="text" placeholder='Describe it — "every room needs a Department"' autocomplete="off" />
       <button type="button" class="text-link" data-act="ask">ask agent ↗</button></label>`;
-    deps.checksView.innerHTML = html;
+    // keep a half-typed rule across redraws (a toggle or a refresh redraws this part)
+    const typed = (part("rules").querySelector("#rule-ask") as HTMLInputElement | null)?.value ?? "";
+    part("rules").innerHTML = html;
+    if (typed) (part("rules").querySelector("#rule-ask") as HTMLInputElement).value = typed;
   }
 
   function idsForKey(set: RulesetView, key: string): RuleView[] {
@@ -196,7 +204,7 @@ export function createChecksView(deps: Deps) {
       deps.setStatus(error instanceof Error ? error.message : String(error));
     }
     rulesets = await api.listRules().catch(() => rulesets);
-    renderChecks();
+    renderRules();
     deps.onChange();
   }
 
@@ -209,7 +217,7 @@ export function createChecksView(deps: Deps) {
         const key = el.dataset.key ?? "";
         if (expanded.has(key)) expanded.delete(key);
         else expanded.add(key);
-        renderChecks();
+        renderRules();
         return;
       }
       case "import":
@@ -317,20 +325,20 @@ export function createChecksView(deps: Deps) {
         if (res.run?.status === "running" && Date.now() - pollStarted > POLL_GIVE_UP_MS) {
           runningId = null;
           deps.setStatus("The check is still running after 10 minutes — press reload later to see its result");
-          renderActive();
+          renderResults();
           deps.onChange();
           return;
         }
         if (res.run?.status === "running") {
           deps.onChange();
-          renderActive();
+          renderResults();
           setTimeout(() => void poll(), POLL_MS);
           return;
         }
         runningId = null;
         rulesets = await api.listRules().catch(() => rulesets);
         loaded = true;
-        deps.setStatus(res.run?.status === "failed" ? `Check failed: ${res.run.error}` : `Checks done — ${passingPct(res)}% of rules passing`);
+        deps.setStatus(res.run?.status === "failed" ? `Check failed: ${res.run.error}` : `Checks done — ${pctText(passingPct(res))} of rules passing`);
       } catch (error) {
         runningId = null;
         deps.setStatus(error instanceof Error ? error.message : String(error));
@@ -341,7 +349,7 @@ export function createChecksView(deps: Deps) {
     setTimeout(() => void poll(), POLL_MS);
   }
 
-  // ------------------------------------------------------------------ 04 Dashboard
+  // ------------------------------------------------------------------ results
 
   function passingPct(res: ResultsView | null) {
     const r = res?.summary?.rules;
@@ -362,24 +370,26 @@ export function createChecksView(deps: Deps) {
     return `<svg class="spark" viewBox="0 0 160 34" preserveAspectRatio="none" aria-label="Rules passing over the last ${values.length} runs"><polyline points="${pts.join(" ")}"/></svg>`;
   }
 
-  function renderDashboard() {
-    const view = deps.dashboardView;
+  /** The model line and one results block: a single line before a run, while it runs or when it failed. */
+  function renderResults() {
+    part("model").textContent = modelLine(deps.modelStats());
+    const view = part("results");
     const run = latest?.run;
     if (!loaded && !run) {
-      view.innerHTML = `<div class="empty"><b>Loading results…</b><span>Reading the latest check run.</span></div>`;
+      view.innerHTML = `<p class="notice">Loading results…</p>`;
       return;
     }
     if (!run) {
-      view.innerHTML = `<div class="empty"><b>No check results yet</b><span>Choose rules in 03 Checks, then press Run checks.</span></div>`;
+      view.innerHTML = `<p class="notice">No results yet. Turn on rules below, then Run checks.</p>`;
       return;
     }
     if (run.status === "running") {
       const p = run.progress;
-      view.innerHTML = `<div class="empty"><b>Checking the model…</b><span>${p ? `${esc(p.stage)} ${p.done}/${p.total}` : "Starting"}</span></div>`;
+      view.innerHTML = `<p class="notice">Checking the model…${p ? ` ${esc(p.stage)} ${p.done}/${p.total}` : ""}</p>`;
       return;
     }
     if (run.status === "failed") {
-      view.innerHTML = `<div class="empty"><b>The last check failed</b><span>${esc(run.error ?? "Unknown error")}</span></div>`;
+      view.innerHTML = `<p class="notice danger">The last check failed: ${esc(run.error ?? "Unknown error")}</p>`;
       return;
     }
     const s = latest!.summary!;
@@ -387,18 +397,23 @@ export function createChecksView(deps: Deps) {
     const pct = passingPct(latest);
     const prev = trend.length > 1 ? trend[trend.length - 2] : null;
     const delta = prev == null ? "first run" : `${pct - prev >= 0 ? "+" : ""}${pct - prev} vs last`;
+    const n = s.elementsChecked;
 
-    let html = `<div class="notice">Run #${run.id} · ${time(run.finishedAt)} · ${s.elementsChecked.toLocaleString()} host elements. Each element is checked on its own — stricter than Autodesk Model Checker, which passes a check when any element matches.</div>`;
-    html += `<div class="kpis">
-      <div class="card"><div class="lab" style="margin:0"><span>rules passing</span><span class="dim">${s.rules.pass} pass · ${s.rules.fail} fail · ${s.rules.na} n/a</span></div>
-        <div style="display:flex;align-items:flex-end;gap:10px;margin-top:6px"><span class="big">${pad3(pct)}%</span><span class="delta">${delta}</span></div>
-        ${spark(trend)}</div>
-      <div class="card"><div class="lab" style="margin:0"><span>issues · failing elements</span></div><div class="rows">
-        <div class="line"><span>${dot("error")}errors</span><span class="dim">${pad3(s.bySeverity.error)}</span></div>
-        <div class="line"><span>${dot("warning")}warnings</span><span class="dim">${pad3(s.bySeverity.warning)}</span></div>
-        <div class="line"><span>${dot("info")}info</span><span class="dim">${pad3(s.bySeverity.info)}</span></div>
-      </div></div>
-    </div>`;
+    let html = `<p class="run-head"><b>Last run #${run.id} · ${time(run.finishedAt)} · ${n.toLocaleString()} ${n === 1 ? "element" : "elements"} checked</b>
+      <span class="dim">Each element is checked on its own, stricter than Autodesk Model Checker.</span></p>`;
+    html += `<div class="card"><div class="lab" style="margin:0"><span>rules passing</span><span class="dim">${s.rules.pass} pass · ${s.rules.fail} fail · ${s.rules.na} n/a</span></div>
+        <div style="display:flex;align-items:flex-end;gap:10px;margin-top:6px"><span class="big">${pctText(pct)}</span><span class="delta">${delta}</span></div>
+        ${spark(trend)}</div>`;
+
+    const fixes = (latest!.fixes ?? []).slice(0, MAX_FIXES);
+    html += `<div class="lab"><span>${fixesHeading(s.bySeverity)}</span><span>${fixes.length} shown</span></div>`;
+    if (fixes.length === 0) html += `<div class="empty"><b>Nothing to fix</b><span>Every checked rule passes.</span></div>`;
+    for (const f of fixes) {
+      const where = f.group.split(" / ").slice(-1)[0];
+      html += `<div class="card fix"><div>${dot(f.severity)}<b>${esc(f.name)}</b> <span class="dim">· ${esc(where)} · ${f.failedCount.toLocaleString()} failing</span></div><p>${esc(
+        f.fix ?? ""
+      )}</p></div>`;
+    }
 
     const cats = Object.entries(s.categories).sort((a, b) => b[1].host - a[1].host).slice(0, 10);
     const linked = Object.values(s.categories).reduce((n, c) => n + c.linked, 0);
@@ -417,16 +432,6 @@ export function createChecksView(deps: Deps) {
       html += `<div class="line"><span>${esc(p.name)} <span class="dim">· ${esc(p.where.join(", "))}</span></span>${meter(p.fillPct)}</div>`;
     }
     html += `</div>`;
-
-    const fixes = (latest!.fixes ?? []).slice(0, MAX_FIXES);
-    html += `<div class="lab"><span>fixes · ranked by elements affected</span><span>${fixes.length} shown</span></div>`;
-    if (fixes.length === 0) html += `<div class="empty"><b>Nothing to fix</b><span>Every checked rule passes.</span></div>`;
-    for (const f of fixes) {
-      const where = f.group.split(" / ").slice(-1)[0];
-      html += `<div class="card fix"><div>${dot(f.severity)}<b>${esc(f.name)}</b> <span class="dim">· ${esc(where)} · ${f.failedCount.toLocaleString()} failing</span></div><p>${esc(
-        f.fix ?? ""
-      )}</p></div>`;
-    }
     view.innerHTML = html;
   }
 
@@ -438,8 +443,7 @@ export function createChecksView(deps: Deps) {
       return p ? `checking · ${p.stage} ${p.done}/${p.total}` : "checking…";
     }
     if (!loaded) return "rules";
-    const last = latest?.run?.status === "done" ? `last run ${time(latest.run.finishedAt)}` : "not run yet";
-    return `${enabledCount()} rules on · ${last}`;
+    return rulesOnLabel(enabledCount(), latest?.run?.status === "done" ? time(latest.run.finishedAt) : null);
   }
 
   function contextLines(): string[] {
@@ -463,5 +467,7 @@ export function createChecksView(deps: Deps) {
     contextLines,
     isRunning: () => runningId != null,
     enabledCount: () => (loaded ? enabledCount() : null),
+    /** The last finished run's summary (null before a run, while one runs, or when it failed). */
+    summary: () => latest?.summary ?? null,
   };
 }
