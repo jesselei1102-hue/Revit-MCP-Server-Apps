@@ -642,7 +642,19 @@
     }
     .dock-group { display: flex; align-items: center; gap: 2px; }
     .dock .count { font-family: var(--mono); font-size: 12px; margin-right: 8px; white-space: nowrap; }
-    .dock .pending-label { font-family: var(--mono); font-size: 12px; color: var(--dock-tx2); margin-right: 6px; white-space: nowrap; }
+    .dock .pending-btn { font-family: var(--mono); }
+    /* The unsaved list opens inside the dock, above its buttons: it moves with the dock however the dock wraps. */
+    .dock.open { border-radius: 18px; }
+    .pending-list {
+      flex: 1 0 100%;
+      order: -1;
+      max-height: 40vh;
+      overflow: auto;
+      margin: 0 0 2px -10px;
+      border-radius: 12px;
+      background: var(--bg);
+      color: var(--tx);
+    }
     .db {
       display: inline-flex;
       align-items: center;
@@ -660,8 +672,6 @@
     .db.pri:disabled { background: var(--accent); }
 
     @media (max-width: 560px) {
-      .stats { gap: 12px 24px; }
-      .stat b { font-size: 22px; }
       .dock { border-radius: 18px; }
     }
   </style>
@@ -699,22 +709,12 @@
       </div>
     </header>
 
-    <section class="stats" aria-label="Model summary">
-      <div class="stat"><b id="kpi-total">—</b><span>elements</span></div>
-      <div class="stat"><b id="kpi-errors">—</b><span><i class="sig danger"></i>warnings</span></div>
-      <div class="stat"><b id="kpi-detach">—</b><span>detachable</span></div>
-      <div class="stat idle" id="kpi-pending-wrap"><b id="kpi-pending">000</b><span><i class="sig"></i>unsaved</span></div>
-    </section>
-
     <nav class="tabs" role="tablist">
       <button class="tab on" type="button" role="tab" data-tab="elements" aria-selected="true">
         <span class="n">01</span>Elements <span class="tab-count" id="tab-count-elements"></span>
       </button>
-      <button class="tab" type="button" role="tab" data-tab="changes" aria-selected="false">
-        <span class="n">02</span>Changes <span class="tab-count" id="tab-count-changes"></span>
-      </button>
       <button class="tab" type="button" role="tab" data-tab="checks" aria-selected="false">
-        <span class="n">03</span>Checks <span class="tab-count" id="tab-count-checks"></span>
+        <span class="n">02</span>Checks <span class="tab-count" id="tab-count-checks"></span>
       </button>
     </nav>
 
@@ -754,10 +754,6 @@
       <div id="table-container"></div>
     </section>
 
-    <section class="panel" id="panel-changes" role="tabpanel" hidden>
-      <div class="changes" id="changes-list"></div>
-    </section>
-
     <section class="panel" id="panel-checks" role="tabpanel" hidden>
       <div class="view" id="checks-view"></div>
     </section>
@@ -774,8 +770,11 @@
         <button class="db" type="button" id="btn-section" title="Section box around the checked elements" hidden>Section box</button>
         <button class="db" type="button" id="btn-reset-view" title="Reset temporary isolate">Reset</button>
       </div>
+      <section class="pending-list" id="pending-list" hidden aria-label="Unsaved changes">
+        <div class="changes" id="changes-list"></div>
+      </section>
       <div class="dock-group" id="dock-pending" hidden>
-        <span class="pending-label" id="pending-label"></span>
+        <button class="db pending-btn" type="button" id="btn-pending" aria-expanded="false" aria-controls="pending-list"></button>
         <button class="db" type="button" id="btn-discard">Discard</button>
         <button class="db pri" type="button" id="btn-apply">Apply →</button>
       </div>
