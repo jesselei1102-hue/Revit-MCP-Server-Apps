@@ -1,5 +1,6 @@
 import { App, applyDocumentTheme, applyHostFonts } from "@modelcontextprotocol/ext-apps";
 import { createChecksView } from "./checks-view";
+import { plural } from "./format";
 
 type TextContent = { type: string; text?: string };
 type ToolResult = {
@@ -394,10 +395,6 @@ function isHostRow(row: Record<string, string>): boolean {
 
 function pendingCount() {
   return pendingTypes.size + pendingParams.size;
-}
-
-function plural(n: number, word: string) {
-  return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
 function displayParamValue(row: Record<string, string>, column: string, elementId: number) {
