@@ -52,4 +52,8 @@ describe("failingCount", () => {
     expect(failingCount({ rules: { fail: 0 } })).toBe("");
     expect(failingCount(null)).toBe("");
   });
+  it("is empty for a running run's summary, which has progress but no rule counts yet", () => {
+    expect(failingCount({ progress: { stage: "collecting", done: 1, total: 4 } })).toBe("");
+    expect(failingCount({})).toBe("");
+  });
 });

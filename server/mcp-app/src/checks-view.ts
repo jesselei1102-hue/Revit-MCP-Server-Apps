@@ -288,7 +288,7 @@ export function createChecksView(deps: Deps) {
     try {
       const result = await deps.app.sendMessage({ role: "user", content: [{ type: "text", text: prompt }] });
       if (!result?.isError) {
-        deps.setStatus("Sent to the agent — the rule appears here once it's created (reopen 03 or press reload)");
+        deps.setStatus("Sent to the agent — the rule appears here once it's created (reopen Checks or press reload)");
         if (input) input.value = "";
         return;
       }
@@ -468,6 +468,6 @@ export function createChecksView(deps: Deps) {
     isRunning: () => runningId != null,
     enabledCount: () => (loaded ? enabledCount() : null),
     /** The last finished run's summary (null before a run, while one runs, or when it failed). */
-    summary: () => latest?.summary ?? null,
+    summary: () => (latest?.run?.status === "done" ? latest.summary ?? null : null),
   };
 }

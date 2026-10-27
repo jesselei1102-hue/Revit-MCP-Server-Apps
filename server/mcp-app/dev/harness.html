@@ -17,6 +17,7 @@
   From server/: `npm run build`, then `python -m http.server 8791 --bind 127.0.0.1`, and open /mcp-app/dev/harness.html.
   URL parameters: theme=dark | checks=none|running|failed|done (default done) | slowrules=1 (rules_list answers after 3 s)
                   applyfail=1 (the second operate_element call fails, so an Apply stops part-way)
+                  slowapply=1 (each operate_element call answers after 1.5 s, to act on the window during an Apply)
   Rows are made up in the shape of the real data. Write tools (operate_element, send_code_to_revit, rules_*, checks_run)
   only answer with a stub: nothing reaches Revit.
   Exposes window.calls, window.messages and window.lastContext for scripted checks.
@@ -79,8 +80,10 @@ const doneRun = (id) => ({ run: { id, status: "done", startedAt: now - 60000, fi
   fixes: [{ ruleId: "r1", name: "Rooms are placed", group: "Rooms", severity: "error", failedCount: 1,
     fix: "Place each room inside an enclosed region. A room with no area is unplaced or not enclosed.", byType: { Room: 1 } }],
   trend: [{ runId: id - 2, at: now - 900000, passedPct: 33 }, { runId: id - 1, at: now - 700000, passedPct: 100 }, { runId: id, at: now - 59000, passedPct: 0 }] });
+// While a run is going the real store's summary holds only the progress (no rule counts yet).
 const runningRun = (id) => ({ run: { id, status: "running", startedAt: now, finishedAt: null, error: null,
-  progress: { stage: "Rooms", done: 30, total: 67 } }, summary: null, results: [], fixes: [], trend: [] });
+  progress: { stage: "Rooms", done: 30, total: 67 } }, summary: { progress: { stage: "Rooms", done: 30, total: 67 } },
+  results: [], fixes: [], trend: [] });
 const failedRun = (id) => ({ run: { id, status: "failed", startedAt: now - 60000, finishedAt: now - 59000, error: "Revit is busy", progress: null } });
 let checksState = q.get("checks") || "done";
 let runId = 12;
@@ -117,6 +120,7 @@ async function toolReply(name, args) {
                { FamilyTypeId: 2, FamilyName: "Doors family 1", TypeName: "Type B", Category: "Doors" }]);
   if (name === "operate_element") {
     operateCalls++;
+    if (q.get("slowapply") === "1") await new Promise((r) => setTimeout(r, 1500));
     if (q.get("applyfail") === "1" && operateCalls === 2) return text('{"Success":false,"Message":"Parameter is read-only (stub)"}');
     return text('{"Success":true,"Message":"stub, nothing sent to Revit"}');
   }

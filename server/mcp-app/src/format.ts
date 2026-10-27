@@ -33,6 +33,7 @@ export function rulesOnLabel(rulesOn: number, lastRun: string | null): string {
 }
 
 /** The number on the Checks tab: failing rules in the last run, nothing when none fail. */
-export function failingCount(summary: { rules: { fail: number } } | null | undefined): string {
-  return summary?.rules.fail ? String(summary.rules.fail) : "";
+export function failingCount(summary: { rules?: { fail: number } } | null | undefined): string {
+  // a running run's summary carries only { progress }
+  return summary?.rules?.fail ? String(summary.rules.fail) : "";
 }

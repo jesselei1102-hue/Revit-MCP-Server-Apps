@@ -1506,7 +1506,7 @@ function renderChanges() {
       group.pending.family
     )}">${escapeHtml(group.pending.family)} : <span class="hl">${escapeHtml(group.pending.type)}</span></span><span class="scope" title="${group.ids.join(
       ", "
-    )}">${plural(group.ids.length, "element")}</span><button type="button" class="remove" data-remove-type="${typeId}" aria-label="Remove this change">${ICON_X}</button></div>`;
+    )}">${plural(group.ids.length, "element")}</span><button type="button" class="remove" data-remove-type="${typeId}" aria-label="Remove this change"${busy ? " disabled" : ""}>${ICON_X}</button></div>`;
   }
   for (const [key, group] of paramGroups) {
     html += `<div class="change"><span class="kind">param</span><span class="what">${escapeHtml(
@@ -1515,7 +1515,7 @@ function renderChanges() {
       ", "
     )}">${plural(group.ids.length, "element")}</span><button type="button" class="remove" data-remove-param="${escapeHtml(
       encodeURIComponent(key)
-    )}" aria-label="Remove this change">${ICON_X}</button></div>`;
+    )}" aria-label="Remove this change"${busy ? " disabled" : ""}>${ICON_X}</button></div>`;
   }
   changesList.innerHTML = html;
 }
@@ -1527,7 +1527,7 @@ btnPending.addEventListener("click", () => {
 
 changesList.addEventListener("click", (event) => {
   const btn = (event.target as HTMLElement).closest("button.remove") as HTMLButtonElement | null;
-  if (!btn) return;
+  if (!btn || busy) return; // an Apply in progress already took this change
   if (btn.dataset.removeType) {
     const typeId = Number(btn.dataset.removeType);
     for (const [id, pending] of Array.from(pendingTypes)) {
