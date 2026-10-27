@@ -97,23 +97,38 @@ Chat-facing tool results stay **summary-sized**; the App dashboard loads full de
 
 Existing upstream tools (create / tag / color / room export / etc.) remain available.
 
-## Requirements
+## Install
 
-- **Node.js 20+** (MCP server)
-- **Autodesk Revit 2020–2027**
-- An MCP client that supports **MCP Apps** (e.g. Cursor) for the schedule UI
+Two pieces. The [release zip](https://github.com/jesselei1102-hue/Revit-MCP-Server-Apps/releases/latest) is the Revit add-in. The MCP server is this repo, built with Node and started by Cursor. They talk on `localhost:8080`.
 
-## Quick start (local)
+You need **Node.js 20+**, **Revit 2020–2027**, and an MCP client that can show MCP Apps (Cursor).
 
-### 1. Build the MCP server
+### 1. Revit add-in
+
+1. Close Revit.
+2. From the [latest release](https://github.com/jesselei1102-hue/Revit-MCP-Server-Apps/releases/latest), download the zip for your Revit year. The name looks like `mcp-servers-for-revit-v1.0.0-Revit2026.zip`.
+3. Unzip it into that year's Addins folder:
+
+```
+%AppData%\Autodesk\Revit\Addins\<year>\
+```
+
+Revit 2026 is `C:\Users\<you>\AppData\Roaming\Autodesk\Revit\Addins\2026\`. The year folder must contain `mcp-servers-for-revit.addin` and `revit_mcp_plugin\` next to each other. If Extract All wrapped them in an extra folder, move those two items up.
+
+4. Start Revit and open a project. On the **Add-Ins** tab, panel **Revit MCP Plugin**, click **MCP Off**. The button switches to **MCP On** and listens on port **8080**.
+
+### 2. MCP server in Cursor
 
 ```bash
-cd server
+git clone https://github.com/jesselei1102-hue/Revit-MCP-Server-Apps.git
+cd Revit-MCP-Server-Apps/server
 npm install
 npm run build
 ```
 
-Point your client at `server/build/index.js`, for example Cursor `mcp.json`:
+`better-sqlite3` compiles a native module. If `npm install` fails on it, install the Visual Studio C++ build tools and run `npm install` again.
+
+Point Cursor at the built server. Use the project file `.cursor/mcp.json`, or the user file `%USERPROFILE%\.cursor\mcp.json`:
 
 ```json
 {
@@ -126,30 +141,22 @@ Point your client at `server/build/index.js`, for example Cursor `mcp.json`:
 }
 ```
 
-### 2. Build & install plugin + command set
+Use your real path, with forward slashes. Reload MCP servers in Cursor.
+
+### 3. Open the schedule
+
+Revit is open, the button says **MCP On**, and a model is open. In chat, ask to open the schedule (`mcp_apps_get_schedule_data`).
+
+Typical loop: edit in **01** and review the unsaved list → import rules and run checks → read **02 Checks** → fix back in **01**.
+
+### Build the plugin yourself
+
+Skip this if you installed the release zip. Debug builds copy the add-in into `%AppData%\Autodesk\Revit\Addins\<year>\`. Replace `R26` with `R20`–`R27` to match your Revit year, then restart Revit.
 
 ```bash
-# Revit 2027
-dotnet build commandset/RevitMCPCommandSet.csproj -c "Debug R27"
-dotnet build plugin/RevitMCPPlugin.csproj -c "Debug R27"
-
-# Revit 2026
 dotnet build commandset/RevitMCPCommandSet.csproj -c "Debug R26"
-
-# Revit 2023
-dotnet build commandset/RevitMCPCommandSet.csproj -c "Debug R23"
-dotnet build plugin/RevitMCPPlugin.csproj -c "Debug R23"
+dotnet build plugin/RevitMCPPlugin.csproj -c "Debug R26"
 ```
-
-Debug builds copy into:
-
-```
-%AppData%\Autodesk\Revit\Addins\<year>\revit_mcp_plugin\
-```
-
-Then open Revit → ribbon **MCP On** → call `mcp_apps_get_schedule_data` from the client.
-
-Typical HITL loop: open the App → edit in **01** and review the unsaved list → import rules & **checks_run** → read the results in **02 Checks** → fix in **01**.
 
 ## Project layout
 
