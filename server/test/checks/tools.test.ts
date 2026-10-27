@@ -149,4 +149,12 @@ describe("check tools", () => {
     expect(res.content[0].text.length).toBeLessThanOrEqual(4000);
     expect(run.content[0].text.length).toBeLessThanOrEqual(4000);
   });
+
+  it("points the agent at the Checks tab of the Schedule app", async () => {
+    await call("rules_upsert", { rules: [goodRule] });
+    await call("checks_run", {});
+    const res = await call("checks_get_results", {});
+    expect(res.content[0].text).toContain("Details are on the Checks tab of the Schedule app.");
+    expect(res.content[0].text).not.toContain("Dashboard");
+  });
 });

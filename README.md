@@ -12,29 +12,29 @@ The Schedule App is a **HITL (human-in-the-loop) workflow**: the AI opens and lo
 
 ### MCP Apps · Schedule (`mcp_apps_get_schedule_data`)
 
-Interactive schedule UI (Ultraviolet theme, light / dark) with four tabs:
+Interactive schedule UI (Ultraviolet theme, light / dark) with two tabs:
 
 | Tab | Role |
 | --- | --- |
-| **01 Elements** | Filterable table of host (+ linked) instances; editable instance parameters |
-| **02 Changes** | Pending type / parameter edits before Apply |
-| **03 Checks** | Import / manage rules, enable/disable, run checks |
-| **04 Dashboard** | Read-only last run, trend, and fix suggestions |
+| **01 Elements** | Filterable table of host (+ linked) instances; editable instance parameters; pending edits before Apply |
+| **02 Checks** | Model warnings, the last check run (pass rate, trend, fixes), then the rules to import, switch and run |
 
 **01 Elements**
 
 - Editable instance parameters (skips calculated quantities like Area / Volume)
 - Search + filters (category / level / family / type / link) and **columns** multi-select
 - Cell selection border; drag the fill handle to paint values down a column
-- Double-click to edit → Apply writes back via `SetParameter` / `ChangeType`
+- Double-click to edit → the dock shows `n unsaved ▴`: open it to review or remove each pending edit, then Apply writes
+  back via `SetParameter` / `ChangeType` (Discard drops them; a reload resets them)
 - Dock: Show in Revit / Isolate / Reset; section-box and category-aware selection helpers
 - Linked rows stay read-only for edits
 
-**03 Checks · 04 Dashboard**
+**02 Checks** (one page, top to bottom)
 
-- Import Autodesk Model Checker checksets (`.xml`, e.g. IFC-SG) or create rules via the agent
-- Run checks against the open host model; results stored per project in SQLite
-- Dashboard shows pass/fail summary, severity counts, top fixes, and recent-run trend
+- Model line: warnings and detachable families
+- Last run: pass rate with trend, fixes with severity counts, compliance by category, parameter fill rate
+- Rules: import Autodesk Model Checker checksets (`.xml`, e.g. IFC-SG) or create rules via the agent; switch them on
+  and Run checks against the open host model; results stored per project in SQLite
 - Suggestions are guidance only — edits still happen in **01** (no auto-fix writeback)
 
 ### Why MCP Apps (vs plain Read / Write tools)
@@ -75,7 +75,7 @@ Chat-facing tool results stay **summary-sized**; the App dashboard loads full de
 
 | Tool | Description |
 | ---- | ----------- |
-| `mcp_apps_get_schedule_data` | MCP Apps schedule UI (Elements / Changes / Checks / Dashboard) |
+| `mcp_apps_get_schedule_data` | MCP Apps schedule UI (Elements / Checks) |
 | `rules_import_checkset` | Import a Model Checker `.xml` checkset |
 | `rules_upsert` | Create or update custom rules (e.g. from natural language) |
 | `rules_list` | List rulesets / rules |
@@ -145,7 +145,7 @@ Debug builds copy into:
 
 Then open Revit → ribbon **MCP On** → call `mcp_apps_get_schedule_data` from the client.
 
-Typical HITL loop: open the App → edit in **01** / review **02** → import rules & **checks_run** → read **04 Dashboard** → fix in **01**.
+Typical HITL loop: open the App → edit in **01** and review the unsaved list → import rules & **checks_run** → read the results in **02 Checks** → fix in **01**.
 
 ## Project layout
 
