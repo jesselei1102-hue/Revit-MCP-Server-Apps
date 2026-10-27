@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Schedule window harness</title>
+<style>
+  body { margin: 0; font: 13px system-ui, sans-serif; background: #e8e8ec; }
+  body.dark { background: #1d1c22; color: #ddd; }
+  #bar { display: flex; gap: 6px; padding: 6px; }
+  iframe { display: block; width: 100%; height: 900px; border: 0; }
+  #log { white-space: pre; font: 11px monospace; padding: 6px; max-height: 180px; overflow: auto; }
+</style>
+</head>
+<body>
+<!--
+  Mock MCP Apps host for the Schedule window — no Claude, Cursor or Revit needed.
+  From server/: `npm run build`, then `python -m http.server 8791 --bind 127.0.0.1`, and open /mcp-app/dev/harness.html.
+  URL parameters: theme=dark | checks=none|running|failed|done (default done) | slowrules=1 (rules_list answers after 3 s)
+                  applyfail=1 (the second operate_element call fails, so an Apply stops part-way)
+  Rows are made up in the shape of the real data. Write tools (operate_element, send_code_to_revit, rules_*, checks_run)
+  only answer with a stub: nothing reaches Revit.
+  Exposes window.calls, window.messages and window.lastContext for scripted checks.
+-->
+<div id="bar">
+  <button type="button" onclick="setTheme('light')">Host theme: light</button>
+  <button type="button" onclick="setTheme('dark')">Host theme: dark</button>
+</div>
+<iframe id="f" src="../../build/mcp-app/app.html"></iframe>
+<div id="log"></div>
+<script>
+const frame = document.getElementById("f");
+const logEl = document.getElementById("log");
+const q = new URLSearchParams(location.search);
+let hostTheme = q.get("theme") === "dark" ? "dark" : "light";
+document.body.classList.toggle("dark", hostTheme === "dark");
+const log = (s) => { logEl.textContent = s + "\n" + logEl.textContent; };
+window.calls = [];
+window.messages = [];
+
+// --- simulated data (same shapes as the server tools) ---
+const SHARE = { "Curtain Wall Mullions": 120, "Curtain Panels": 60, Walls: 90, "Plumbing Fixtures": 40, Doors: 40,
+  "Structural Framing": 30, "Structural Columns": 30, Rooms: 66, Floors: 20, "Generic Models": 12, Windows: 12, Mass: 9,
+  Parking: 6, Stairs: 6, Site: 1 };
+const LEVELS = ["SFL 0.25_G/F", "SFL 5.25_1/F", "SFL 8.75_2/F", "SFL 12.25_R/F"];
+const DASHBOARD = { errorCount: 103, warningCount: 103, detachableFamilyCount: 40 };
+function scheduleRows() {
+  const rows = [];
+  let id = 300000;
+  for (const [category, n] of Object.entries(SHARE)) for (let i = 0; i < n; i++) {
+    id += 7;
+    rows.push({ elementId: String(id), link: "", linkInstanceId: "", name: `${category} ${i + 1}`, category,
+      family: `${category} family ${i % 3 + 1}`, type: `Type ${"ABCD"[i % 4]}`, level: LEVELS[i % 4],
+      Mark: i % 5 ? String(i + 1) : "", Comments: i % 7 ? "" : "check", Area: category === "Rooms" ? `${20 + i}.00 m²` : "" });
+  }
+  return rows;
+}
+function scheduleData() {
+  const rows = scheduleRows();
+  return { columns: ["elementId", "link", "linkInstanceId", "name", "category", "family", "type", "level", "Mark", "Comments", "Area"],
+    rows, matchedCount: rows.length, totalMatched: rows.length, truncated: false, message: `Host ${rows.length}, linked 0`, dashboard: DASHBOARD };
+}
+const rulesets = [
+  { id: "mine", name: "My rules", sourceKind: "claude", enabled: true, rules: [
+    { id: "r1", rulesetId: "mine", group: "Rooms", name: "Rooms are placed", severity: "error", enabled: true, supported: true },
+    { id: "r2", rulesetId: "mine", group: "Doors", name: "Every door has a Mark", severity: "warning", enabled: false, supported: true },
+    { id: "r3", rulesetId: "mine", group: "Doors", name: "Fire doors have a rating", severity: "warning", enabled: false, supported: true } ] },
+  { id: "ifc", name: "IFC-SG Schema Model Validation Checks", sourceKind: "model-checker-xml", enabled: false,
+    rules: Array.from({ length: 40 }, (_, i) => ({ id: `x${i}`, rulesetId: "ifc",
+      group: ["Revit 2023 and 2024 / Architecture (ARC) / Areas", "Revit 2023 and 2024 / Architecture (ARC) / Doors", "Revit 2023 and 2024 / Structural (STR) / Floors"][i % 3],
+      name: `IFC rule ${i + 1}`, severity: "warning", enabled: false, supported: i % 9 !== 0,
+      unsupportedReason: i % 9 ? undefined : "formula not supported" })) } ];
+const now = Date.now();
+const doneRun = (id) => ({ run: { id, status: "done", startedAt: now - 60000, finishedAt: now - 59000, error: null, progress: null },
+  summary: { rules: { pass: 0, fail: 1, na: 0 }, bySeverity: { error: 1, warning: 0, info: 0 }, byGroup: { Rooms: { rules: 1, failing: 1 } },
+    categories: { Rooms: { host: 66, linked: 0, compliantPct: 98 } }, parameters: [{ name: "Department", where: ["Rooms"], fillPct: 40 }],
+    elementsChecked: 67 },
+  results: [{ ruleId: "r1", status: "fail", inScope: 67, failedCount: 1, failedIds: [300007], byType: { Room: 1 },
+    fix: "Place each room inside an enclosed region.", name: "Rooms are placed", group: "Rooms", severity: "error", rulesetId: "mine" }],
+  fixes: [{ ruleId: "r1", name: "Rooms are placed", group: "Rooms", severity: "error", failedCount: 1,
+    fix: "Place each room inside an enclosed region. A room with no area is unplaced or not enclosed.", byType: { Room: 1 } }],
+  trend: [{ runId: id - 2, at: now - 900000, passedPct: 33 }, { runId: id - 1, at: now - 700000, passedPct: 100 }, { runId: id, at: now - 59000, passedPct: 0 }] });
+const runningRun = (id) => ({ run: { id, status: "running", startedAt: now, finishedAt: null, error: null,
+  progress: { stage: "Rooms", done: 30, total: 67 } }, summary: null, results: [], fixes: [], trend: [] });
+const failedRun = (id) => ({ run: { id, status: "failed", startedAt: now - 60000, finishedAt: now - 59000, error: "Revit is busy", progress: null } });
+let checksState = q.get("checks") || "done";
+let runId = 12;
+let pollsLeft = 0;   // a run started with checks_run reports "running" for two polls, then "done"
+function checkResults() {
+  if (pollsLeft > 0) { pollsLeft--; return runningRun(runId); }
+  if (checksState === "none") return { run: null };
+  if (checksState === "running") return runningRun(runId);
+  if (checksState === "failed") return failedRun(runId);
+  return doneRun(runId);
+}
+let operateCalls = 0;
+const text = (t) => ({ content: [{ type: "text", text: t }] });
+const ok = (data) => ({ content: [{ type: "text", text: JSON.stringify(data).slice(0, 200) }], structuredContent: data });
+
+// --- host protocol ---
+function post(msg) { frame.contentWindow.postMessage(msg, "*"); }
+function setHostTheme(t) {
+  hostTheme = t;
+  document.body.classList.toggle("dark", t === "dark");
+  post({ jsonrpc: "2.0", method: "ui/notifications/host-context-changed", params: { theme: t } });
+}
+window.setTheme = setHostTheme;
+async function toolReply(name, args) {
+  if (name === "mcp_apps_get_schedule_data") return ok(scheduleData());
+  if (name === "rules_list") {
+    if (q.get("slowrules") === "1") await new Promise((r) => setTimeout(r, 3000));
+    return ok({ rulesets });
+  }
+  if (name === "checks_get_results") return ok(checkResults());
+  if (name === "checks_run") { runId++; pollsLeft = 2; checksState = "done"; return ok({ runId }); }
+  if (name === "get_available_family_types")
+    return ok([{ FamilyTypeId: 1, FamilyName: "Doors family 1", TypeName: "Type A", Category: "Doors" },
+               { FamilyTypeId: 2, FamilyName: "Doors family 1", TypeName: "Type B", Category: "Doors" }]);
+  if (name === "operate_element") {
+    operateCalls++;
+    if (q.get("applyfail") === "1" && operateCalls === 2) return text('{"Success":false,"Message":"Parameter is read-only (stub)"}');
+    return text('{"Success":true,"Message":"stub, nothing sent to Revit"}');
+  }
+  return text('{"Success":true,"Message":"stub, nothing sent to Revit"}');
+}
+window.addEventListener("message", async (e) => {
+  if (e.source !== frame.contentWindow) return;
+  const m = e.data;
+  if (!m || m.jsonrpc !== "2.0") return;
+  if (m.method === "ui/notifications/size-changed") {
+    if (m.params?.height) frame.style.height = Math.ceil(m.params.height) + "px";
+    return;
+  }
+  if (m.method && m.id == null) {
+    if (m.method === "ui/notifications/initialized") {
+      const summary = { detail: "summary", matchedCount: 542, totalMatched: 542, truncated: false, dashboard: DASHBOARD };
+      post({ jsonrpc: "2.0", method: "ui/notifications/tool-input", params: { arguments: {} } });
+      post({ jsonrpc: "2.0", method: "ui/notifications/tool-result", params: ok(summary) });
+    }
+    return;
+  }
+  const reply = (result) => post({ jsonrpc: "2.0", id: m.id, result });
+  if (m.method === "ui/initialize")
+    return reply({ protocolVersion: m.params.protocolVersion, hostInfo: { name: "harness", version: "0" },
+      hostCapabilities: { serverTools: {}, updateModelContext: { text: {} }, message: { text: {} } }, hostContext: { theme: hostTheme } });
+  if (m.method === "ui/update-model-context") {
+    window.lastContext = m.params.content?.[0]?.text;
+    return reply({});
+  }
+  if (m.method === "ui/message") {
+    const t = m.params.content.map((c) => c.text).join("");
+    window.messages.push(t);
+    log("message:\n" + t);
+    return reply({});
+  }
+  if (m.method === "tools/call") {
+    const { name, arguments: args = {} } = m.params;
+    window.calls.push({ name, args });
+    log("tools/call " + name + " " + JSON.stringify(args).slice(0, 200));
+    return reply(await toolReply(name, args));
+  }
+  log("unhandled " + m.method);
+  reply({});
+});
+</script>
+</body>
+</html>
