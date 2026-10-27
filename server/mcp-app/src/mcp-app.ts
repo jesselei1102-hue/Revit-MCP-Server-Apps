@@ -36,7 +36,7 @@ type FilterState = {
 
 type ShowMode = "select" | "isolate";
 type Theme = "light" | "dark";
-type TabName = "elements" | "changes" | "checks";
+type TabName = "elements" | "checks";
 
 type FamilyTypeInfo = {
   FamilyTypeId?: number;
@@ -264,13 +264,7 @@ const paramPickerTrigger = $<HTMLButtonElement>("param-picker-trigger");
 const paramPickerLabel = $("param-picker-label");
 const paramPickerSearchInput = $<HTMLInputElement>("param-picker-search");
 const paramPickerList = $("param-picker-list");
-const kpiTotal = $("kpi-total");
-const kpiErrors = $("kpi-errors");
-const kpiDetach = $("kpi-detach");
-const kpiPending = $("kpi-pending");
-const kpiPendingWrap = $("kpi-pending-wrap");
 const tabCountElements = $("tab-count-elements");
-const tabCountChanges = $("tab-count-changes");
 const changesList = $("changes-list");
 const selCount = $("sel-count");
 const btnShow = $<HTMLButtonElement>("btn-show");
@@ -288,7 +282,11 @@ const checksDockLabel = $("checks-dock-label");
 const btnRunChecks = $<HTMLButtonElement>("btn-run-checks");
 const tabCountChecks = $("tab-count-checks");
 const checksView = $("checks-view");
-const pendingLabel = $("pending-label");
+const btnPending = $("btn-pending");
+const pendingList = $("pending-list");
+const dock = document.querySelector(".dock") as HTMLElement;
+/** The unsaved list above the dock buttons (Elements only); it closes once nothing is pending. */
+let pendingOpen = false;
 const btnDiscard = $<HTMLButtonElement>("btn-discard");
 const btnApply = $<HTMLButtonElement>("btn-apply");
 const typeMenu = $("type-menu");
@@ -373,11 +371,6 @@ function escapeHtml(value: string) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
-}
-
-function pad3(value: number | undefined) {
-  if (value == null || !Number.isFinite(value)) return "—";
-  return value < 1000 ? String(value).padStart(3, "0") : String(value);
 }
 
 function glyph(markup: string) {
@@ -888,7 +881,7 @@ async function openTypeMenu(anchor: HTMLButtonElement, row: Record<string, strin
       render();
       status.textContent =
         targets.size > 1
-          ? `${typeName} queued for ${targets.size} elements. Review in Changes, then Apply.`
+          ? `${typeName} queued for ${targets.size} elements. Review them under unsaved, then Apply.`
           : `${typeName} queued. Drag the dot down to fill, then Apply.`;
     });
     typeMenu.appendChild(choice);
@@ -1401,19 +1394,9 @@ function beginCellEdit(td: HTMLElement, elementId: number, column: string, rowIn
 
 let lastTotalMatched = 0;
 
-function updateStats() {
-  kpiTotal.textContent = allRows.length ? pad3(allRows.length) : "—";
-  kpiErrors.textContent = pad3(dashboardStats?.errorCount ?? dashboardStats?.warningCount);
-  kpiDetach.textContent = pad3(dashboardStats?.detachableFamilyCount);
-}
-
 function syncDock() {
   const pending = pendingCount();
-  kpiPending.textContent = pad3(pending);
-  kpiPendingWrap.classList.toggle("idle", pending === 0);
   tabCountElements.textContent = allRows.length ? String(viewRows.length) : "";
-  tabCountChanges.textContent = pending ? String(pending) : "";
-  tabCountChanges.classList.toggle("hot", pending > 0);
 
   const ids = targetIds();
   const selectedInView = viewRows.filter((row) => checked.has(Number(row.elementId))).length;
@@ -1441,13 +1424,19 @@ function syncDock() {
   tabCountChecks.textContent = failingCount(checks?.summary() ?? null);
   checksDockLabel.textContent = checks?.dockLabel() ?? "";
   btnRunChecks.disabled = Boolean(checks?.isRunning());
-  pendingLabel.textContent = `${pending} unsaved`;
+  if (pending === 0) pendingOpen = false;
+  const listShown = pendingOpen && activeTab === "elements";
+  pendingList.hidden = !listShown;
+  dock.classList.toggle("open", listShown);
+  btnPending.textContent = `${pending} unsaved ${pendingOpen ? "▾" : "▴"}`;
+  btnPending.setAttribute("aria-expanded", listShown ? "true" : "false");
+  btnPending.title = pendingOpen ? "Hide the unsaved changes" : "Show the unsaved changes";
   btnApply.textContent = `Apply ${pending} →`;
   btnApply.disabled = busy;
   btnDiscard.disabled = busy;
   btnRefresh.classList.toggle("spin", busy);
 
-  if (activeTab === "changes") renderChanges();
+  if (listShown) renderChanges();
   scheduleModelContext();
 }
 
@@ -1465,10 +1454,9 @@ function setTab(tab: TabName) {
     el.setAttribute("aria-selected", on ? "true" : "false");
   });
   $("panel-elements").hidden = tab !== "elements";
-  $("panel-changes").hidden = tab !== "changes";
   $("panel-checks").hidden = tab !== "checks";
   closeTypeMenu();
-  if (tab === "changes") renderChanges();
+  if (tab === "checks") pendingOpen = false;
   if (tab === "checks") void checks?.show();
   syncDock();
 }
@@ -1512,10 +1500,6 @@ function renderChanges() {
     group.ids.push(pending.elementId);
     paramGroups.set(key, group);
   }
-  if (typeGroups.size === 0 && paramGroups.size === 0) {
-    changesList.innerHTML = `<div class="empty"><b>No unsaved changes</b><span>Edit cells or drag to fill in Elements. Changes wait here until you apply them.</span></div>`;
-    return;
-  }
   let html = "";
   for (const [typeId, group] of typeGroups) {
     html += `<div class="change"><span class="kind">type</span><span class="what" title="${escapeHtml(
@@ -1535,6 +1519,11 @@ function renderChanges() {
   }
   changesList.innerHTML = html;
 }
+
+btnPending.addEventListener("click", () => {
+  pendingOpen = !pendingOpen;
+  syncDock();
+});
 
 changesList.addEventListener("click", (event) => {
   const btn = (event.target as HTMLElement).closest("button.remove") as HTMLButtonElement | null;
@@ -2126,6 +2115,10 @@ document.addEventListener("keydown", (event) => {
     pop.wrap.classList.remove("open");
     pop.trigger.setAttribute("aria-expanded", "false");
   }
+  if (pendingOpen) {
+    pendingOpen = false;
+    syncDock();
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -2160,7 +2153,6 @@ function parseSchedule(data: ScheduleData | undefined, fallbackText?: string) {
   selectedCell = null;
   refreshFilterOptions();
   refreshParamPicker();
-  updateStats();
   render();
   if (data.message) status.textContent = data.message;
 }
@@ -2219,6 +2211,7 @@ function buildModelContext(): string {
     `pending-type-changes: ${pendingTypes.size}`,
     `pending-parameter-edits: ${pendingParams.size}`,
     `active-tab: ${activeTab}`,
+    `changes-list: ${pendingOpen ? "open" : "closed"}`,
     "---",
     "",
     "The user is working in the Revit Schedule app (mcp_apps_get_schedule_data).",
