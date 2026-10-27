@@ -57,7 +57,7 @@ function resultsPayload(store: CheckStore, run: StoredRun, detail: "summary" | "
       `Issues: ${s?.bySeverity.error} errors · ${s?.bySeverity.warning} warnings · ${s?.bySeverity.info} info across ${s?.elementsChecked} elements.`,
       fixes.length ? "Top fixes:" : "No failing rules.",
       ...fixes.slice(0, 8).map((f, i) => `${i + 1}. [${f.severity}] ${f.name} — ${f.failedCount} failing: ${f.fix ?? ""}`),
-      "Details are in the 04 Dashboard tab of the Schedule app.",
+      "Details are on the Checks tab of the Schedule app.",
     ].join("\n");
   }
   const runInfo = { id: run.id, status: run.status, startedAt: run.startedAt, finishedAt: run.finishedAt, error: run.error, progress: s?.progress ?? null };
