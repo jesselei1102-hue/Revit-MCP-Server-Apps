@@ -873,6 +873,8 @@ async function ensureTypesForCategory(category: string): Promise<FamilyTypeInfo[
 }
 
 function closeTypeMenu() {
+  // The menu had the keyboard (opened with Enter): give it back to the grid.
+  if (typeMenu.contains(document.activeElement)) table.querySelector("table")?.focus({ preventScroll: true });
   typeMenu.classList.remove("open");
   typeMenu.innerHTML = "";
   menuAnchor = null;
@@ -902,7 +904,7 @@ function checkedHostIds(category?: string): number[] {
     .map((row) => Number(row.elementId));
 }
 
-async function openTypeMenu(anchor: HTMLButtonElement, row: Record<string, string>, rowIndex: number) {
+async function openTypeMenu(anchor: HTMLButtonElement, row: Record<string, string>, rowIndex: number, fromKeyboard = false) {
   const elementId = Number(row.elementId);
   const category = row.category ?? "";
   menuAnchor = anchor;
@@ -964,7 +966,18 @@ async function openTypeMenu(anchor: HTMLButtonElement, row: Record<string, strin
     typeMenu.appendChild(choice);
   }
   placeTypeMenu(anchor);
+  if (fromKeyboard) (typeMenu.querySelector<HTMLButtonElement>("button.on") ?? typeMenu.querySelector("button"))?.focus();
 }
+
+// Up and Down move through the type choices; Enter picks one, Esc closes the menu.
+typeMenu.addEventListener("keydown", (event) => {
+  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+  event.preventDefault();
+  const choices = Array.from(typeMenu.querySelectorAll<HTMLButtonElement>("button"));
+  const at = choices.indexOf(document.activeElement as HTMLButtonElement);
+  const next = choices[Math.max(0, Math.min(choices.length - 1, at + (event.key === "ArrowDown" ? 1 : -1)))];
+  next?.focus();
+});
 
 // ---------------------------------------------------------------------------
 // Fill-drag: live preview, skip reasons, auto-scroll, Esc to cancel
@@ -1174,9 +1187,21 @@ document.addEventListener("mouseup", () => {
 // ---------------------------------------------------------------------------
 
 function paintSelection() {
-  table.querySelectorAll("td.cell-selected").forEach((td) => td.classList.remove("cell-selected"));
+  table.querySelectorAll("td.cell-selected").forEach((td) => {
+    td.classList.remove("cell-selected");
+    td.removeAttribute("id");
+    td.removeAttribute("aria-selected");
+  });
+  const grid = table.querySelector("table");
+  grid?.removeAttribute("aria-activedescendant");
   if (!selectedCell || fillDrag) return;
-  table.querySelector(cellSelector(selectedCell.rowIndex, selectedCell.column))?.classList.add("cell-selected");
+  const td = table.querySelector(cellSelector(selectedCell.rowIndex, selectedCell.column));
+  if (!td) return;
+  // Screen readers follow the grid's active descendant, since focus stays on the <table>.
+  td.classList.add("cell-selected");
+  td.id = "grid-cell";
+  td.setAttribute("aria-selected", "true");
+  grid?.setAttribute("aria-activedescendant", "grid-cell");
 }
 
 function columnsForTable(rows: Record<string, string>[]): string[] {
@@ -1264,6 +1289,8 @@ function syncRowWindow(force = false) {
 
 function render() {
   closeTypeMenu();
+  // A re-render replaces the grid; keep the keyboard in it if it was there (an edit just committed, say).
+  const keepFocus = table.contains(document.activeElement);
   const rows = filteredRows();
   viewRows = rows;
   renderChips();
@@ -1286,7 +1313,7 @@ function render() {
   // Capitalised like the Revit parameter names beside them.
   const labels: Record<string, string> = { family: "Type", level: "Level", category: "Category", link: "Link" };
 
-  let html = "<table><thead><tr>";
+  let html = `<table role="grid" tabindex="0" aria-rowcount="${rows.length + 1}" aria-label="Elements. Arrow keys move, Enter edits, Space checks a row."><thead><tr>`;
   html += `<th class="check-col"><input type="checkbox" id="check-all" aria-label="Select all in view" title="Select all. Shift-click rows to select a range."${
     allFilteredChecked ? " checked" : ""
   } /></th>`;
@@ -1301,6 +1328,7 @@ function render() {
   const [start, end] = rowWindow();
   html += `</tr></thead><tbody>${bodyHtml(start, end)}</tbody></table>`;
   table.innerHTML = html;
+  if (keepFocus) table.querySelector("table")?.focus({ preventScroll: true });
 
   // Fewer rows can clamp the scroll position, and host fonts can change the row height:
   // either moves the window, so settle it before painting.
@@ -1320,8 +1348,9 @@ function rowHtml(row: Record<string, string>, rowIndex: number) {
   const id = Number(row.elementId);
   const host = isHostRow(row);
   const rowClass = [checked.has(id) ? "sel" : "", pendingTypes.has(id) ? "dirty" : ""].filter(Boolean).join(" ");
-  let html = `<tr data-row-index="${rowIndex}"${rowClass ? ` class="${rowClass}"` : ""}>`;
-  html += `<td class="check-col"><input type="checkbox" data-id="${escapeHtml(row.elementId)}" aria-label="Select row" title="Shift-click to select a range"${
+  // Inner controls are tabindex -1: the grid is one Tab stop, and the arrow keys reach every cell.
+  let html = `<tr data-row-index="${rowIndex}" aria-rowindex="${rowIndex + 2}"${rowClass ? ` class="${rowClass}"` : ""}>`;
+  html += `<td class="check-col" data-column="check" data-row-index="${rowIndex}"><input type="checkbox" tabindex="-1" data-id="${escapeHtml(row.elementId)}" aria-label="Check row" title="Shift-click to check a range"${
     checked.has(id) ? " checked" : ""
   } /></td>`;
   for (const column of tableColumns) {
@@ -1331,7 +1360,7 @@ function rowHtml(row: Record<string, string>, rowIndex: number) {
       const label = pending?.type || (row.type ?? "").trim() || (row.family ?? "");
       const title = escapeHtml((row.family ?? "") + (row.type ? " · " + row.type : ""));
       if (host) {
-        html += `<td class="family-cell" ${at}><button type="button" class="type-face" title="${title}"><span class="label${
+        html += `<td class="family-cell" ${at}><button type="button" class="type-face" tabindex="-1" title="${title}"><span class="label${
           pending ? " hl" : ""
         }">${escapeHtml(label || "Select type")}</span>${ICON_CHEVRON}</button><span class="fill-handle${
           pending ? "" : " idle"
@@ -1508,9 +1537,19 @@ table.addEventListener("dblclick", (event) => {
   beginCellEdit(cell.td, Number(cell.row.elementId), cell.column, cell.rowIndex);
 });
 
-/** Columns the keyboard moves between: the type, then the parameter columns. */
+/** Editable columns, left to right: the type, then the parameter columns. */
 function editableColumns(): string[] {
   return tableColumns.filter((column) => column === "family" || isParamColumn(column));
+}
+
+/** Columns the arrow keys move between: the row checkbox, then the editable columns. */
+function gridColumns(): string[] {
+  return ["check", ...editableColumns()];
+}
+
+/** The <table> is the grid's single Tab stop; the selected cell is its aria-activedescendant. */
+function gridEl(): HTMLElement | null {
+  return table.querySelector("table");
 }
 
 /** Scroll the table just enough to show a row below the sticky header, and render it. */
@@ -1524,44 +1563,88 @@ function scrollRowIntoView(rowIndex: number) {
   syncRowWindow();
 }
 
-// Keyboard on the selected cell: arrows move, Enter or F2 edits (or opens the type menu).
-document.addEventListener("keydown", (event) => {
-  if (activeTab !== "elements" || !selectedCell || fillDrag || event.altKey || event.ctrlKey || event.metaKey) return;
-  const target = event.target as HTMLElement;
-  if (target.closest("input, select, textarea, #type-menu")) return;
-  const onFace = Boolean(target.closest("button.type-face"));
-  if (target.closest("button") && !onFace) return;
-  const cols = editableColumns();
-  if (!cols.length) return;
-  let { rowIndex } = selectedCell;
-  let col = Math.max(0, cols.indexOf(selectedCell.column));
-  if (event.key === "Enter" || event.key === "F2") {
-    if (onFace && event.key === "Enter") return; // the focused type button opens its menu itself
-    event.preventDefault();
-    scrollRowIntoView(rowIndex);
-    const td = table.querySelector(cellSelector(rowIndex, selectedCell.column)) as HTMLElement | null;
-    const row = viewRows[rowIndex];
-    if (!td || !row) return;
-    if (td.classList.contains("editable")) beginCellEdit(td, Number(row.elementId), selectedCell.column, rowIndex);
-    else td.querySelector<HTMLButtonElement>("button.type-face")?.click();
-    return;
+/** Move the selected cell; `wrap` runs on to the next or previous row at the ends, as Tab does. */
+function moveSelection(rowStep: number, colStep: number, cols = gridColumns(), wrap = false) {
+  if (!selectedCell || !cols.length || viewRows.length === 0) return;
+  let rowIndex = selectedCell.rowIndex + rowStep;
+  let col = Math.max(0, cols.indexOf(selectedCell.column)) + colStep;
+  if (wrap && col >= cols.length) {
+    col = 0;
+    rowIndex++;
+  } else if (wrap && col < 0) {
+    col = cols.length - 1;
+    rowIndex--;
   }
-  if (event.key === "ArrowUp") rowIndex--;
-  else if (event.key === "ArrowDown") rowIndex++;
-  else if (event.key === "ArrowLeft") col--;
-  else if (event.key === "ArrowRight") col++;
-  else return;
-  event.preventDefault();
   rowIndex = Math.max(0, Math.min(viewRows.length - 1, rowIndex));
   col = Math.max(0, Math.min(cols.length - 1, col));
   selectedCell = { rowIndex, column: cols[col] };
   closeTypeMenu();
   scrollRowIntoView(rowIndex);
   paintSelection();
-  // Focus follows the selection: onto its type button, or off the old one so keys keep reaching the table.
-  const face = table.querySelector(`${cellSelector(rowIndex, cols[col])} button.type-face`) as HTMLButtonElement | null;
-  if (face) face.focus({ preventScroll: true });
-  else (document.activeElement as HTMLElement | null)?.blur();
+}
+
+// Tabbing into the grid picks a cell to start from: the first editable one in the top visible row.
+table.addEventListener("focusin", (event) => {
+  if (event.target !== gridEl() || viewRows.length === 0) return;
+  if (!selectedCell || selectedCell.rowIndex >= viewRows.length) {
+    const cols = gridColumns();
+    const top = Math.min(viewRows.length - 1, Math.floor(table.scrollTop / rowHeight));
+    selectedCell = { rowIndex: top, column: cols[1] ?? cols[0] };
+  }
+  paintSelection();
+});
+
+// Clicking a row checkbox or type button hands the keyboard back to the grid.
+table.addEventListener("click", (event) => {
+  const target = event.target as HTMLElement;
+  const cell = cellFromEvent(event);
+  if (!cell || !target.closest("input[data-id], button.type-face")) return;
+  if (target.closest("input[data-id]")) selectedCell = { rowIndex: cell.rowIndex, column: "check" };
+  gridEl()?.focus({ preventScroll: true });
+  paintSelection();
+});
+
+// Keys on the focused grid: arrows move, Enter / F2 edits or opens the type menu, Space checks the row.
+// Tab leaves the grid, as in any grid; inside a cell edit it moves to the next cell instead.
+table.addEventListener("keydown", (event) => {
+  const grid = gridEl();
+  if (!grid || event.target !== grid || !selectedCell || fillDrag || event.altKey || event.ctrlKey || event.metaKey) return;
+  const { rowIndex, column } = selectedCell;
+  const moves: Record<string, [number, number]> = {
+    ArrowUp: [-1, 0],
+    ArrowDown: [1, 0],
+    ArrowLeft: [0, -1],
+    ArrowRight: [0, 1],
+  };
+  if (moves[event.key]) {
+    event.preventDefault();
+    moveSelection(...moves[event.key]);
+    return;
+  }
+  if (event.key === "Home" || event.key === "End") {
+    event.preventDefault();
+    const cols = gridColumns();
+    selectedCell = { rowIndex, column: event.key === "Home" ? cols[0] : cols[cols.length - 1] };
+    paintSelection();
+    return;
+  }
+  if (event.key !== "Enter" && event.key !== "F2" && event.key !== " ") return;
+  event.preventDefault();
+  scrollRowIntoView(rowIndex);
+  const td = table.querySelector(cellSelector(rowIndex, column)) as HTMLElement | null;
+  const row = viewRows[rowIndex];
+  if (!td || !row) return;
+  if (column === "check") {
+    td.querySelector<HTMLInputElement>("input[data-id]")?.click();
+    gridEl()?.focus({ preventScroll: true });
+  } else if (event.key === " ") {
+    return;
+  } else if (td.classList.contains("editable")) {
+    beginCellEdit(td, Number(row.elementId), column, rowIndex);
+  } else {
+    const face = td.querySelector<HTMLButtonElement>("button.type-face");
+    if (face) void openTypeMenu(face, row, rowIndex, true);
+  }
 });
 
 table.addEventListener(
@@ -1617,6 +1700,11 @@ function beginCellEdit(td: HTMLElement, elementId: number, column: string, rowIn
       event.preventDefault();
       bulk = event.ctrlKey || event.metaKey;
       commit();
+    } else if (event.key === "Tab") {
+      // As in a spreadsheet: keep the value and step to the next (or previous) editable cell.
+      event.preventDefault();
+      commit();
+      moveSelection(0, event.shiftKey ? -1 : 1, editableColumns(), true);
     } else if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
@@ -1891,11 +1979,11 @@ async function callHostTool(name: string, elementIds: number[], action?: string)
 
 /**
  * The Revit socket parses each read as one JSON object, and one read is 8192 bytes.
- * A few hundred ids fit. A whole category such as Walls (~1200 ids) is split and rejected.
+ * A few hundred ids fit in one call; larger sets go over in chunks of this size (actOnManyIds).
  */
 const SOCKET_ID_LIMIT = 400;
 
-/** Collect and show or isolate one category inside Revit, so the id list never crosses the socket. */
+/** Turn the section box off in the 3D view and zoom it to fit. */
 const RESET_SECTION_CODE = `
 var uiDoc = new UIDocument(document);
 View3D view3d = uiDoc.ActiveView as View3D;
@@ -1917,6 +2005,7 @@ if (open != null) open.ZoomToFit();
 return "reset";
 `;
 
+/** Collect and show or isolate one category inside Revit, so the id list never crosses the socket. */
 const CATEGORY_VIEW_CODE = `
 var uiDoc = new UIDocument(document);
 var view = uiDoc.ActiveView;
@@ -1940,6 +2029,77 @@ if (mode == "isolate") {
 }
 else {
     uiDoc.Selection.SetElementIds(ids);
+}
+try { uiDoc.ShowElements(ids); }
+catch (Exception) { uiDoc.ShowElements(ids.Take(200).ToList()); }
+return ids.Count;
+`;
+
+/**
+ * Put one chunk of ids into the Revit selection: "replace" for the first chunk, "add" after it.
+ * ElementId takes a long from Revit 2024 and an int before, and scripts compile without version
+ * symbols, so the constructor is picked at run time.
+ */
+const SELECT_CHUNK_CODE = `
+var uiDoc = new UIDocument(document);
+var longCtor = typeof(ElementId).GetConstructor(new[] { typeof(long) });
+var intCtor = typeof(ElementId).GetConstructor(new[] { typeof(int) });
+ICollection<ElementId> ids = (string)parameters[1] == "add" ? uiDoc.Selection.GetElementIds() : new List<ElementId>();
+foreach (var s in ((string)parameters[0]).Split(','))
+    ids.Add(longCtor != null
+        ? (ElementId)longCtor.Invoke(new object[] { long.Parse(s) })
+        : (ElementId)intCtor.Invoke(new object[] { int.Parse(s) }));
+uiDoc.Selection.SetElementIds(ids);
+return ids.Count;
+`;
+
+/**
+ * Act on the current Revit selection once SELECT_CHUNK_CODE has built it: isolate it, box it, or just
+ * zoom to it. The box follows the add-in's own SelectionBox (3D view, 1 ft margin).
+ */
+const SELECTION_ACTION_CODE = `
+var uiDoc = new UIDocument(document);
+var ids = uiDoc.Selection.GetElementIds();
+if (ids.Count == 0) throw new Exception("Nothing is selected in Revit");
+var mode = (string)parameters[0];
+if (mode == "box") {
+    View3D view3d = uiDoc.ActiveView as View3D;
+    if (view3d == null) {
+        view3d = new FilteredElementCollector(document)
+            .OfClass(typeof(View3D))
+            .Cast<View3D>()
+            .FirstOrDefault(v => !v.IsTemplate && !v.IsLocked && (v.Name.Contains("{3D}") || v.Name.Contains("Default 3D")));
+        if (view3d == null) throw new Exception("No 3D view for a section box");
+        uiDoc.ActiveView = view3d;
+    }
+    BoundingBoxXYZ box = null;
+    foreach (var id in ids) {
+        var b = document.GetElement(id)?.get_BoundingBox(null);
+        if (b == null) continue;
+        if (box == null) { box = new BoundingBoxXYZ { Min = b.Min, Max = b.Max }; continue; }
+        box.Min = new XYZ(Math.Min(box.Min.X, b.Min.X), Math.Min(box.Min.Y, b.Min.Y), Math.Min(box.Min.Z, b.Min.Z));
+        box.Max = new XYZ(Math.Max(box.Max.X, b.Max.X), Math.Max(box.Max.Y, b.Max.Y), Math.Max(box.Max.Z, b.Max.Z));
+    }
+    if (box == null) throw new Exception("The checked elements have no extent to box");
+    var pad = new XYZ(1, 1, 1);
+    box.Min = box.Min - pad;
+    box.Max = box.Max + pad;
+    using (var t = new Transaction(document, "Section box around checked elements")) {
+        t.Start();
+        view3d.IsSectionBoxActive = true;
+        view3d.SetSectionBox(box);
+        t.Commit();
+    }
+}
+else if (mode == "isolate") {
+    var view = uiDoc.ActiveView;
+    using (var t = new Transaction(document, "Isolate checked elements")) {
+        t.Start();
+        if (view.IsInTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate))
+            view.DisableTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate);
+        view.IsolateElementsTemporary(ids);
+        t.Commit();
+    }
 }
 try { uiDoc.ShowElements(ids); }
 catch (Exception) { uiDoc.ShowElements(ids.Take(200).ToList()); }
@@ -1978,6 +2138,19 @@ async function showCategoryInRevit(mode: ShowMode, ost: string, category: string
   } finally {
     setBusy(false);
   }
+}
+
+/**
+ * More ids than one socket read carries: build the Revit selection chunk by chunk, then isolate, box or
+ * zoom it inside Revit. Throws on the first refused call.
+ */
+async function actOnManyIds(mode: ShowMode | "box", ids: number[], busyLabel: string) {
+  for (let i = 0; i < ids.length; i += SOCKET_ID_LIMIT) {
+    const sent = Math.min(i + SOCKET_ID_LIMIT, ids.length);
+    setBusy(true, `${busyLabel}: ${sent} of ${ids.length} sent to Revit…`);
+    await callSendCode(SELECT_CHUNK_CODE, [ids.slice(i, sent).join(","), i === 0 ? "replace" : "add"]);
+  }
+  await callSendCode(SELECTION_ACTION_CODE, [mode]);
 }
 
 /** A hidden Revit link stays invisible under temporary isolate until the instance and its type are unhidden. */
@@ -2138,7 +2311,14 @@ async function showInRevit(mode: ShowMode) {
   // Linked rows in that set must not become an isolate of the whole link — that looks
   // like Walls did nothing, because the link brings the rest of the model back.
   if ((narrowed || checkedCount > 0) && hostIds.length > SOCKET_ID_LIMIT) {
-    say(`That is ${hostIds.length} elements, which does not fit in one request. Narrow the filter or check fewer rows.`, "error");
+    try {
+      await actOnManyIds(mode, hostIds, `${mode === "isolate" ? "Isolating" : "Selecting"} ${plural(hostIds.length, "element")}`);
+      say(hostActionLabel(mode, hostIds.length, skippedLinks));
+    } catch (error) {
+      sayError(error);
+    } finally {
+      setBusy(false);
+    }
     return;
   }
   if ((narrowed || checkedCount > 0) && hostIds.length > 0) {
@@ -2166,12 +2346,14 @@ async function showInRevit(mode: ShowMode) {
       : `${mode === "isolate" ? "Isolating" : "Selecting"} ${plural(ids.length, "element")}…`;
   setBusy(true, busyLabel);
   try {
-    if (mode === "isolate") {
-      await unhideLinkedModels(linkInstanceIds(rows));
-      await callHostTool("operate_element", ids, "Isolate");
+    if (mode === "isolate") await unhideLinkedModels(linkInstanceIds(rows));
+    if (ids.length > SOCKET_ID_LIMIT) {
+      await actOnManyIds(mode, ids, busyLabel.replace(/…$/, ""));
+    } else {
+      if (mode === "isolate") await callHostTool("operate_element", ids, "Isolate");
+      await callHostTool("select_elements", ids);
+      await callHostTool("zoom_to_elements", ids);
     }
-    await callHostTool("select_elements", ids);
-    await callHostTool("zoom_to_elements", ids);
     say(showStatus(mode, hostCount, linkNames));
   } catch (error) {
     sayError(error);
@@ -2210,13 +2392,10 @@ btnSection.addEventListener("click", async () => {
     );
     return;
   }
-  if (ids.length > SOCKET_ID_LIMIT) {
-    say(`Section box fits ${SOCKET_ID_LIMIT} elements at a time. Check fewer rows.`, "error");
-    return;
-  }
   setBusy(true, "Creating section box…");
   try {
-    await callHostTool("operate_element", ids, "SelectionBox");
+    if (ids.length > SOCKET_ID_LIMIT) await actOnManyIds("box", ids, "Creating section box");
+    else await callHostTool("operate_element", ids, "SelectionBox");
     sectionBoxActive = true;
     say(
       skipped
@@ -2430,8 +2609,9 @@ app.ontoolresult = (result) => {
     return;
   }
   parseSchedule(dataFromResult(typed), textFromResult(typed));
-  // Upgrade to editable instance params when the agent loaded computed KeyParameters / None.
-  if (lastArgs.parametersOutputType !== "EditableInstanceParameters") {
+  // Upgrade to editable instance params when the agent loaded computed KeyParameters / None. Left out,
+  // the server already defaults to editable ones, so loading again would fetch the same rows twice.
+  if ((lastArgs.parametersOutputType ?? "EditableInstanceParameters") !== "EditableInstanceParameters") {
     void reloadSchedule("Loading editable parameters…");
   }
 };

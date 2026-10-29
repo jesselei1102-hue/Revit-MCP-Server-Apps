@@ -15,7 +15,9 @@
         "build:app": "vite build",
         "build": "npm run clean && tsc && npm run build:app",
         "prepublishOnly": "npm run build",
-        "test": "vitest run"
+        "test": "vitest run",
+        "theme:sync": "node scripts/theme-sync.mjs",
+        "theme:check": "node scripts/theme-sync.mjs --check"
     },
     "files": [
         "build",

@@ -1,0 +1,64 @@
+/*
+ * Ultraviolet tokens — light on :root, dark on :root[data-theme="dark"] (set by theme.ts).
+ * The Revit Schedule app ships a copy of this file (server/mcp-app/theme/tokens.css);
+ * `npm run theme:sync` there refreshes it and `npm run theme:check` reports drift.
+ *
+ * To change the signal colour, edit these five variables in BOTH blocks:
+ *   --accent      the signal itself (light #7b61ff, dark #8f7bff)
+ *   --accent-tx   accent used as text (darker in light, lighter in dark)
+ *   --accent-soft 7% wash for selected rows / fill range
+ *   --accent-hl   highlighter behind pending values
+ *   --hl-tx       text on the highlighter
+ * Components must only use these variables — never hard-coded colours.
+ */
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --s1: #f5f5f8;
+  --s2: #ececf1;
+  --line: rgba(18, 17, 24, 0.08);
+  --line2: rgba(18, 17, 24, 0.16);
+  --tx: #121118;
+  --tx2: #5d5b6b;
+  --tx3: #706e80; /* 4.5:1 on --s1, so labels and placeholders stay legible */
+  --accent: #7b61ff;
+  --accent-tx: #5b41e0;
+  --on-accent: #ffffff;
+  --accent-soft: rgba(123, 97, 255, 0.07);
+  --accent-hl: rgba(123, 97, 255, 0.2);
+  --hl-tx: #3a2a99;
+  --danger: #e5484d;
+  --dock-bg: #121118;
+  --dock-line: transparent;
+  --dock-tx: #f2f1f7;
+  --dock-tx2: rgba(242, 241, 247, 0.62);
+  --dock-hover: rgba(255, 255, 255, 0.1);
+  --pop-shadow: 0 12px 32px rgba(18, 17, 24, 0.14), 0 2px 6px rgba(18, 17, 24, 0.06);
+  --glow: none;
+  --mono: var(--font-mono, ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace);
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e0d14;
+  --s1: #16151e;
+  --s2: #1d1c27;
+  --line: rgba(255, 255, 255, 0.07);
+  --line2: rgba(255, 255, 255, 0.14);
+  --tx: #ecebf3;
+  --tx2: #9c9aae;
+  --tx3: #858399; /* 4.9:1 on --s1 */
+  --accent: #8f7bff;
+  --accent-tx: #b3a6ff;
+  --on-accent: #0e0d14;
+  --accent-soft: rgba(143, 123, 255, 0.07);
+  --accent-hl: rgba(143, 123, 255, 0.28);
+  --hl-tx: #d9d2ff;
+  --danger: #f0605f;
+  --dock-bg: #1d1c27;
+  --dock-line: rgba(255, 255, 255, 0.14);
+  --dock-tx: #ecebf3;
+  --dock-tx2: #9c9aae;
+  --dock-hover: rgba(255, 255, 255, 0.06);
+  --pop-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  --glow: 0 0 10px var(--accent);
+}

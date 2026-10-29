@@ -4,60 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>MCP Apps · Revit Schedule</title>
+  <!-- Ultraviolet tokens, copied from the theme repo: npm run theme:sync / theme:check -->
+  <link rel="stylesheet" href="./theme/tokens.css" />
   <style>
-    /* ---------- Tokens: Ultraviolet, light (default) + dark ---------- */
-    :root {
-      color-scheme: light;
-      --bg: #ffffff;
-      --s1: #f5f5f8;
-      --s2: #ececf1;
-      --line: rgba(18, 17, 24, 0.08);
-      --line2: rgba(18, 17, 24, 0.16);
-      --tx: #121118;
-      --tx2: #5d5b6b;
-      --tx3: #706e80;
-      --accent: #7b61ff;
-      --accent-tx: #5b41e0;
-      --on-accent: #ffffff;
-      --accent-soft: rgba(123, 97, 255, 0.07);
-      --accent-hl: rgba(123, 97, 255, 0.2);
-      --hl-tx: #3a2a99;
-      --danger: #e5484d;
-      --dock-bg: #121118;
-      --dock-line: transparent;
-      --dock-tx: #f2f1f7;
-      --dock-tx2: rgba(242, 241, 247, 0.62);
-      --dock-hover: rgba(255, 255, 255, 0.1);
-      --pop-shadow: 0 12px 32px rgba(18, 17, 24, 0.14), 0 2px 6px rgba(18, 17, 24, 0.06);
-      --glow: none;
-      --mono: var(--font-mono, ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace);
-    }
-    :root[data-theme="dark"] {
-      color-scheme: dark;
-      --bg: #0e0d14;
-      --s1: #16151e;
-      --s2: #1d1c27;
-      --line: rgba(255, 255, 255, 0.07);
-      --line2: rgba(255, 255, 255, 0.14);
-      --tx: #ecebf3;
-      --tx2: #9c9aae;
-      --tx3: #858399;
-      --accent: #8f7bff;
-      --accent-tx: #b3a6ff;
-      --on-accent: #0e0d14;
-      --accent-soft: rgba(143, 123, 255, 0.07);
-      --accent-hl: rgba(143, 123, 255, 0.28);
-      --hl-tx: #d9d2ff;
-      --danger: #f0605f;
-      --dock-bg: #1d1c27;
-      --dock-line: rgba(255, 255, 255, 0.14);
-      --dock-tx: #ecebf3;
-      --dock-tx2: #9c9aae;
-      --dock-hover: rgba(255, 255, 255, 0.06);
-      --pop-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
-      --glow: 0 0 10px var(--accent);
-    }
-
     * { box-sizing: border-box; margin: 0; padding: 0; }
     /* No min-height here: hosts auto-size the iframe to the content, and a viewport-relative minimum
        would stop the frame from ever shrinking (e.g. switching from Elements to Checks). */
@@ -75,6 +24,11 @@
       outline-offset: 2px;
     }
     .mono { font-family: var(--mono); }
+    /* Browser surfaces in the palette: selection, caret, scrollbars. */
+    ::selection { background: var(--accent-hl); color: var(--hl-tx); }
+    input { caret-color: var(--accent); }
+    * { scrollbar-width: thin; scrollbar-color: var(--line2) transparent; }
+    *:hover { scrollbar-color: var(--tx3) transparent; }
     svg.i { width: 14px; height: 14px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
     [hidden] { display: none !important; }
 
@@ -174,7 +128,7 @@
       font-size: 13px;
     }
     .tab:hover { color: var(--tx2); }
-    .tab .tab-count { font-family: var(--mono); font-size: 11px; color: var(--tx3); }
+    .tab .tab-count { font-family: var(--mono); font-size: 11px; color: var(--tx3); font-variant-numeric: tabular-nums; }
     .tab.on { color: var(--tx); }
     .tab.on::after {
       content: "";
@@ -331,7 +285,7 @@
     }
     .chip:hover { color: var(--tx); border-color: var(--tx3); }
     .chip .glyph { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.4; flex: 0 0 auto; }
-    .chip .count { font-family: var(--mono); font-size: 11px; opacity: 0.6; }
+    .chip .count { font-family: var(--mono); font-size: 11px; opacity: 0.6; font-variant-numeric: tabular-nums; }
     .chip.on { background: var(--tx); color: var(--bg); border-color: transparent; }
     .chip.on .glyph { stroke: var(--accent); }
     .chip.ghost { border-style: dashed; }
@@ -351,7 +305,11 @@
     }
     .empty b { display: block; font-weight: 400; color: var(--tx); margin-bottom: 4px; }
     .empty span { font-size: 12px; }
-    table { width: 100%; border-collapse: collapse; }
+    /* Figures line up down a column (Mark, counts, levels). */
+    table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    /* The grid takes focus as one piece; the selected cell shows where the keyboard is. */
+    #table-container table:focus { outline: none; }
+    #table-container table:focus-visible td.cell-selected { outline-width: 2px; outline-offset: -2px; }
     th {
       position: sticky;
       top: 0;
@@ -728,7 +686,7 @@
       color: var(--dock-tx);
     }
     .dock-group { display: flex; align-items: center; gap: 2px; }
-    .dock .count { font-family: var(--mono); font-size: 12px; margin-right: 8px; white-space: nowrap; }
+    .dock .count { font-family: var(--mono); font-size: 12px; margin-right: 8px; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .dock .pending-btn { color: var(--dock-tx); }
     .dock .pending-btn svg { transition: transform 0.15s; }
     .dock .pending-btn[aria-expanded="true"] svg { transform: rotate(180deg); }
