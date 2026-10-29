@@ -15,7 +15,7 @@
       --line2: rgba(18, 17, 24, 0.16);
       --tx: #121118;
       --tx2: #5d5b6b;
-      --tx3: #9a98a8;
+      --tx3: #706e80;
       --accent: #7b61ff;
       --accent-tx: #5b41e0;
       --on-accent: #ffffff;
@@ -41,7 +41,7 @@
       --line2: rgba(255, 255, 255, 0.14);
       --tx: #ecebf3;
       --tx2: #9c9aae;
-      --tx3: #5f5d70;
+      --tx3: #858399;
       --accent: #8f7bff;
       --accent-tx: #b3a6ff;
       --on-accent: #0e0d14;
@@ -79,7 +79,8 @@
     [hidden] { display: none !important; }
 
     .app { position: relative; display: flex; flex-direction: column; }
-    .orbit-clip { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+    /* The orbit stays in the header: below the tab line it would run through the toolbar controls. */
+    .orbit-clip { position: absolute; inset: 0 0 auto 0; height: 96px; overflow: hidden; pointer-events: none; }
     .orbit { position: absolute; right: -70px; top: -80px; pointer-events: none; }
     .orbit .o1 { stroke: var(--line2); }
     .orbit .o2 { stroke: var(--line); }
@@ -173,7 +174,6 @@
       font-size: 13px;
     }
     .tab:hover { color: var(--tx2); }
-    .tab .n { font-family: var(--mono); font-size: 11px; }
     .tab .tab-count { font-family: var(--mono); font-size: 11px; color: var(--tx3); }
     .tab.on { color: var(--tx); }
     .tab.on::after {
@@ -193,12 +193,14 @@
     /* ---------- Toolbar ---------- */
     .toolbar {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
-      gap: 16px;
+      gap: 8px;
       padding: 14px 20px 10px;
     }
     .search {
-      flex: 1 1 auto;
+      flex: 1 1 180px;
+      margin-right: 8px;
       min-width: 0;
       display: flex;
       align-items: center;
@@ -219,18 +221,53 @@
       padding: 7px 0;
     }
     .search input::placeholder { color: var(--tx3); }
+    /* Small actions (clear, import, ask agent): accent text so they read as something to press, not a caption. */
     .text-link {
       display: inline-flex;
       align-items: center;
       gap: 5px;
-      font-family: var(--mono);
-      font-size: 11px;
+      font-size: 12px;
+      color: var(--accent-tx);
+      white-space: nowrap;
+      padding: 4px 2px;
+    }
+    .text-link:hover { color: var(--tx); }
+
+    /* Filter dropdowns and the Columns button share one pill shape; a set filter fills in like a chosen chip. */
+    .pick, .pill {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 30px;
+      border-radius: 99px;
+      border: 0.5px solid var(--line2);
+      font-size: 12px;
       color: var(--tx2);
       white-space: nowrap;
-      padding: 4px 0;
     }
-    .text-link:hover, .pop-wrap.open > .text-link { color: var(--tx); }
-    .text-link sup { color: var(--accent-tx); font-size: 10px; }
+    .pick:hover, .pill:hover, .pop-wrap.open > .pill { color: var(--tx); border-color: var(--tx3); }
+    .pick select {
+      appearance: none;
+      max-width: 150px;
+      height: 100%;
+      font: inherit;
+      color: inherit;
+      background: transparent;
+      border: 0;
+      border-radius: inherit;
+      padding: 0 28px 0 12px;
+      text-overflow: ellipsis;
+      cursor: pointer;
+    }
+    .pick select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .pick select option { color: var(--tx); background: var(--bg); }
+    .pick svg { position: absolute; right: 10px; width: 12px; height: 12px; pointer-events: none; }
+    .pick.on { background: var(--tx); color: var(--bg); border-color: transparent; }
+    .pick.on svg { color: var(--accent); }
+    .pill { padding: 0 12px; }
+    .pill svg { width: 13px; height: 13px; }
+    .pill-count { font-family: var(--mono); font-size: 11px; color: var(--accent-tx); }
 
     .pop-wrap { position: relative; }
     .popover {
@@ -249,8 +286,7 @@
       gap: 10px;
     }
     .pop-wrap.open .popover { display: flex; }
-    .field { display: flex; flex-direction: column; gap: 4px; font-family: var(--mono); font-size: 11px; color: var(--tx3); }
-    .field select, .popover input[type="search"] {
+    .popover input[type="search"] {
       width: 100%;
       font: inherit;
       font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
@@ -262,7 +298,7 @@
       padding: 6px 8px;
       outline: none;
     }
-    .field select:focus, .popover input[type="search"]:focus { border-color: var(--accent); }
+    .popover input[type="search"]:focus { border-color: var(--accent); }
     .pop-actions { display: flex; justify-content: space-between; gap: 8px; }
 
     .ms-list { list-style: none; overflow: auto; max-height: 220px; margin: 0 -4px; }
@@ -299,11 +335,12 @@
     .chip.on { background: var(--tx); color: var(--bg); border-color: transparent; }
     .chip.on .glyph { stroke: var(--accent); }
     .chip.ghost { border-style: dashed; }
-    .chip-sep { width: 1px; align-self: stretch; margin: 4px 4px; background: var(--line2); }
 
     /* ---------- Table ---------- */
     #table-container {
       overflow: auto;
+      /* Rows are re-rendered as you scroll; anchoring would fight that and make the list jump. */
+      overflow-anchor: none;
       max-height: 460px;
       border-top: 0.5px solid var(--line);
     }
@@ -323,12 +360,14 @@
       font-family: var(--mono);
       font-size: 11px;
       font-weight: 400;
-      color: var(--tx3);
+      color: var(--tx2);
       background: var(--bg);
       padding: 9px 12px 7px;
       border-bottom: 0.5px solid var(--line);
       white-space: nowrap;
     }
+    /* Marks the columns you can change, so editing is discoverable without hovering. */
+    th .edit-mark { width: 11px; height: 11px; margin-left: 5px; vertical-align: -1px; color: var(--accent-tx); }
     td {
       position: relative;
       padding: 9px 12px;
@@ -336,9 +375,13 @@
       vertical-align: middle;
       white-space: nowrap;
     }
+    /* One fixed row pitch (host and linked rows alike): the table is windowed and spacer rows stand in
+       for the rest, so every row has to be the height the spacers assume. Keep in step with rowHeight. */
+    tbody tr[data-row-index] { height: 40px; }
+    tr.spacer td { padding: 0; border: 0; }
     th.check-col, td.check-col { width: 44px; padding-left: 20px; padding-right: 4px; }
     td.check-col input, th.check-col input { accent-color: var(--accent); width: 13px; height: 13px; cursor: pointer; }
-    tbody tr:hover td { background: var(--s1); }
+    tbody tr[data-row-index]:hover td { background: var(--s1); }
     tr.sel td { background: var(--accent-soft); }
     tr.sel td.check-col { box-shadow: inset 2px 0 0 var(--accent); }
     td.muted, .readonly { color: var(--tx3); }
@@ -348,7 +391,22 @@
     .cat-cell .glyph { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.4; }
 
     .family-cell, .param-cell { min-width: 130px; max-width: 280px; }
-    .param-cell.editable { cursor: cell; }
+    .param-cell.editable { cursor: text; }
+    /* Hovering a value you can edit shows the field it becomes. */
+    .param-cell.editable:hover:not(.cell-selected) { box-shadow: inset 0 0 0 1px var(--line2); }
+    .edit-scope {
+      position: absolute;
+      right: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-family: var(--mono);
+      font-size: 10px;
+      padding: 1px 7px;
+      border-radius: 99px;
+      background: var(--accent);
+      color: var(--on-accent);
+      pointer-events: none;
+    }
     .param-cell .cell-value { display: block; min-height: 1.2em; overflow: hidden; text-overflow: ellipsis; }
     .param-cell .cell-value:empty::before { content: "·"; color: var(--tx3); }
     .hl {
@@ -376,7 +434,8 @@
       padding: 1px 0;
     }
     .type-face .label { overflow: hidden; text-overflow: ellipsis; }
-    .type-face .chev { color: var(--tx3); opacity: 0; width: 12px; height: 12px; }
+    /* Always shown, faintly: the type is a dropdown, and it should look like one before you hover. */
+    .type-face .chev { color: var(--tx3); opacity: 0.55; width: 12px; height: 12px; }
     .type-face:hover .chev, td.cell-selected .type-face .chev { opacity: 1; }
     .type-face:hover { color: var(--accent-tx); }
 
@@ -473,7 +532,8 @@
     }
     #type-menu.open { display: block; }
     #type-menu .menu-status { padding: 8px; font-size: 12px; color: var(--tx3); }
-    #type-menu .menu-hint { padding: 6px 8px 4px; font-family: var(--mono); font-size: 10px; color: var(--tx3); }
+    #type-menu .menu-hint { padding: 6px 8px 4px; font-size: 11px; color: var(--tx2); }
+    #type-menu .menu-hint b { font-weight: 500; color: var(--accent-tx); }
     #type-menu button {
       display: flex;
       flex-direction: column;
@@ -568,7 +628,9 @@
     .tog[aria-checked="true"]::after { transform: translateX(12px); background: var(--on-accent); }
     .tog[aria-checked="mixed"] { background: var(--accent-hl); }
     .tog[aria-checked="mixed"]::after { transform: translateX(6px); background: var(--accent); }
-    .exp { color: var(--tx); text-align: left; padding: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+    .exp { display: inline-flex; align-items: center; gap: 4px; color: var(--tx); text-align: left; padding: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+    .exp .disc { width: 12px; height: 12px; color: var(--tx3); transition: transform 0.15s; }
+    .exp[aria-expanded="true"] .disc { transform: rotate(90deg); }
     .exp:hover { color: var(--accent-tx); }
     .line.indent { padding-left: 16px; }
     .rules { padding-left: 28px; border-left: 0.5px solid var(--line); margin-left: 6px; }
@@ -623,6 +685,31 @@
     .fix p { color: var(--tx2); margin-top: 4px; font-size: 12px; }
     @media (max-width: 560px) { .kpis { grid-template-columns: minmax(0, 1fr); } }
 
+    /* ---------- Notice line: the last result or error, else the next step ---------- */
+    .notice-line {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin: 12px 20px 0;
+      font-size: 12px;
+      line-height: 1.45;
+      color: var(--tx);
+    }
+    .notice-line:empty { display: none; }
+    .notice-line::before {
+      content: "";
+      flex: 0 0 auto;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      transform: translateY(-1px);
+    }
+    .notice-line.hint { color: var(--tx2); }
+    .notice-line.hint::before { background: var(--line2); }
+    .notice-line.error { color: var(--danger); }
+    .notice-line.error::before { background: var(--danger); }
+
     /* ---------- Dock ---------- */
     .dock {
       position: sticky;
@@ -642,7 +729,9 @@
     }
     .dock-group { display: flex; align-items: center; gap: 2px; }
     .dock .count { font-family: var(--mono); font-size: 12px; margin-right: 8px; white-space: nowrap; }
-    .dock .pending-btn { font-family: var(--mono); }
+    .dock .pending-btn { color: var(--dock-tx); }
+    .dock .pending-btn svg { transition: transform 0.15s; }
+    .dock .pending-btn[aria-expanded="true"] svg { transform: rotate(180deg); }
     /* The unsaved list opens inside the dock, above its buttons: it moves with the dock however the dock wraps. */
     .dock.open { border-radius: 18px; }
     .pending-list {
@@ -695,7 +784,7 @@
         </svg>
         <div style="min-width: 0">
           <h1>Schedule</h1>
-          <p class="meta" id="status">Waiting for Revit…</p>
+          <p class="meta" id="summary">Waiting for Revit…</p>
         </div>
       </div>
       <div class="top-actions">
@@ -711,10 +800,10 @@
 
     <nav class="tabs" role="tablist">
       <button class="tab on" type="button" role="tab" data-tab="elements" aria-selected="true">
-        <span class="n">01</span>Elements <span class="tab-count" id="tab-count-elements"></span>
+        Elements <span class="tab-count" id="tab-count-elements"></span>
       </button>
       <button class="tab" type="button" role="tab" data-tab="checks" aria-selected="false">
-        <span class="n">02</span>Checks <span class="tab-count" id="tab-count-checks"></span>
+        Checks <span class="tab-count" id="tab-count-checks"></span>
       </button>
     </nav>
 
@@ -724,21 +813,27 @@
           <svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
           <input id="filter-search" type="search" placeholder="Search elements" autocomplete="off" />
         </label>
-        <div class="pop-wrap" id="filters-pop">
-          <button class="text-link" type="button" id="filters-trigger" aria-expanded="false">filters<sup id="filters-count"></sup></button>
-          <div class="popover">
-            <label class="field">level<select id="filter-level"><option value="">All</option></select></label>
-            <label class="field">family<select id="filter-family"><option value="">All</option></select></label>
-            <label class="field">type<select id="filter-type"><option value="">All</option></select></label>
-            <label class="field">link<select id="filter-link"><option value="">All</option></select></label>
-            <div class="pop-actions">
-              <button class="text-link" type="button" id="btn-clear-filters">clear all</button>
-            </div>
-          </div>
-        </div>
+        <label class="pick" title="Filter by level">
+          <select id="filter-level" aria-label="Level"><option value="">All levels</option></select>
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+        </label>
+        <label class="pick" title="Filter by family">
+          <select id="filter-family" aria-label="Family"><option value="">All families</option></select>
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+        </label>
+        <label class="pick" title="Filter by type">
+          <select id="filter-type" aria-label="Type"><option value="">All types</option></select>
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+        </label>
+        <label class="pick" id="pick-link" title="Filter by linked model" hidden>
+          <select id="filter-link" aria-label="Linked model"><option value="">All models</option></select>
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+        </label>
+        <button class="text-link" type="button" id="btn-clear-filters" hidden>Clear</button>
         <div class="pop-wrap" id="param-picker">
-          <button class="text-link" type="button" id="param-picker-trigger" aria-haspopup="listbox" aria-expanded="false">
-            columns<sup id="param-picker-label"></sup>
+          <button class="pill" type="button" id="param-picker-trigger" aria-haspopup="listbox" aria-expanded="false">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16M9 5v14M15 5v14" /></svg>
+            Columns<span class="pill-count" id="param-picker-label"></span>
           </button>
           <div class="popover" role="listbox" aria-multiselectable="true">
             <input id="param-picker-search" type="search" placeholder="Search parameters" autocomplete="off" />
@@ -758,25 +853,28 @@
       <div class="view" id="checks-view"></div>
     </section>
 
+    <!-- What just happened (results, errors), or what to do next when nothing has. -->
+    <p class="notice-line" id="status" role="status" aria-live="polite"></p>
+
     <footer class="dock">
       <div class="dock-group" id="dock-checks" hidden>
         <span class="count" id="checks-dock-label"></span>
-        <button class="db pri" type="button" id="btn-run-checks">Run checks →</button>
+        <button class="db pri" type="button" id="btn-run-checks">Run checks</button>
       </div>
       <div class="dock-group" id="dock-select">
         <span class="count" id="sel-count">0 in view</span>
-        <button class="db" type="button" id="btn-show" title="Select and zoom in Revit">Show in Revit</button>
-        <button class="db" type="button" id="btn-isolate" title="Isolate, select and zoom in Revit">Isolate</button>
+        <button class="db" type="button" id="btn-show" title="Select and zoom to these elements in Revit">Show in Revit</button>
+        <button class="db" type="button" id="btn-isolate" title="Hide everything else in the Revit view, then zoom">Isolate</button>
         <button class="db" type="button" id="btn-section" title="Section box around the checked elements" hidden>Section box</button>
-        <button class="db" type="button" id="btn-reset-view" title="Reset temporary isolate">Reset</button>
+        <button class="db" type="button" id="btn-reset-view" title="Undo Isolate: bring back the hidden elements">Reset view</button>
       </div>
-      <section class="pending-list" id="pending-list" hidden aria-label="Unsaved changes">
+      <section class="pending-list" id="pending-list" hidden aria-label="Changes not yet applied">
         <div class="changes" id="changes-list"></div>
       </section>
       <div class="dock-group" id="dock-pending" hidden>
         <button class="db pending-btn" type="button" id="btn-pending" aria-expanded="false" aria-controls="pending-list"></button>
         <button class="db" type="button" id="btn-discard">Discard</button>
-        <button class="db pri" type="button" id="btn-apply">Apply →</button>
+        <button class="db pri" type="button" id="btn-apply">Apply to Revit</button>
       </div>
     </footer>
   </div>

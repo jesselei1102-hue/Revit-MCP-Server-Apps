@@ -16,6 +16,7 @@
   Mock MCP Apps host for the Schedule window — no Claude, Cursor or Revit needed.
   From server/: `npm run build`, then `python -m http.server 8791 --bind 127.0.0.1`, and open /mcp-app/dev/harness.html.
   URL parameters: theme=dark | checks=none|running|failed|done (default done) | slowrules=1 (rules_list answers after 3 s)
+                  rows=N (about N schedule rows instead of 542, to load-test the table)
                   applyfail=1 (the second operate_element call fails, so an Apply stops part-way)
                   slowapply=1 (each operate_element call answers after 1.5 s, to act on the window during an Apply)
   Rows are made up in the shape of the real data. Write tools (operate_element, send_code_to_revit, rules_*, checks_run)
@@ -44,10 +45,12 @@ const SHARE = { "Curtain Wall Mullions": 120, "Curtain Panels": 60, Walls: 90, "
   Parking: 6, Stairs: 6, Site: 1 };
 const LEVELS = ["SFL 0.25_G/F", "SFL 5.25_1/F", "SFL 8.75_2/F", "SFL 12.25_R/F"];
 const DASHBOARD = { errorCount: 103, warningCount: 103, detachableFamilyCount: 40 };
+// rows=N scales every category so the total is about N (default 542), to load-test the table.
+const ROW_SCALE = Math.max(1, Number(q.get("rows")) || 542) / 542;
 function scheduleRows() {
   const rows = [];
   let id = 300000;
-  for (const [category, n] of Object.entries(SHARE)) for (let i = 0; i < n; i++) {
+  for (const [category, share] of Object.entries(SHARE)) for (let i = 0, n = Math.round(share * ROW_SCALE); i < n; i++) {
     id += 7;
     rows.push({ elementId: String(id), link: "", linkInstanceId: "", name: `${category} ${i + 1}`, category,
       family: `${category} family ${i % 3 + 1}`, type: `Type ${"ABCD"[i % 4]}`, level: LEVELS[i % 4],
@@ -115,9 +118,10 @@ async function toolReply(name, args) {
   }
   if (name === "checks_get_results") return ok(checkResults());
   if (name === "checks_run") { runId++; pollsLeft = 2; checksState = "done"; return ok({ runId }); }
+  // The real tool answers with JSON text only; the SDK rejects an array as structuredContent.
   if (name === "get_available_family_types")
-    return ok([{ FamilyTypeId: 1, FamilyName: "Doors family 1", TypeName: "Type A", Category: "Doors" },
-               { FamilyTypeId: 2, FamilyName: "Doors family 1", TypeName: "Type B", Category: "Doors" }]);
+    return text(JSON.stringify([{ FamilyTypeId: 1, FamilyName: "Doors family 1", TypeName: "Type A", Category: "Doors" },
+               { FamilyTypeId: 2, FamilyName: "Doors family 1", TypeName: "Type B", Category: "Doors" }]));
   if (name === "operate_element") {
     operateCalls++;
     if (q.get("slowapply") === "1") await new Promise((r) => setTimeout(r, 1500));

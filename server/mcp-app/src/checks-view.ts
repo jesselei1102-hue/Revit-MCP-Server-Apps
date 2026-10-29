@@ -10,7 +10,7 @@ type Deps = {
   checksView: HTMLElement;
   /** Model warnings and detachable families from the schedule load, for the line at the top. */
   modelStats: () => ModelStats | null;
-  setStatus: (message: string) => void;
+  setStatus: (message: string, kind?: "info" | "error") => void;
   escapeHtml: (value: string) => string;
   /** Glyph svg for a display category name ("Doors"). */
   categoryGlyph: (name: string) => string;
@@ -21,6 +21,8 @@ type Deps = {
 };
 
 const POLL_MS = 1000;
+/** Rotates a quarter turn when its row is open (`.exp[aria-expanded="true"]` in app.html). */
+const ICON_DISCLOSURE = '<svg class="i disc" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
 /** Stop polling a run that never finishes (e.g. the server died mid-run). */
 const POLL_GIVE_UP_MS = 10 * 60 * 1000;
 const MAX_FIXES = 20;
@@ -58,7 +60,7 @@ export function createChecksView(deps: Deps) {
         if (runningId == null) latest = results;
         loaded = true;
       } catch (error) {
-        deps.setStatus(`Couldn't load checks: ${error instanceof Error ? error.message : String(error)}`);
+        deps.setStatus(`Couldn't load checks: ${error instanceof Error ? error.message : String(error)}`, "error");
       } finally {
         loading = null;
       }
@@ -120,8 +122,8 @@ export function createChecksView(deps: Deps) {
       const open = expanded.has(key);
       const label = prefix && group.startsWith(`${prefix} / `) ? group.slice(prefix.length + 3) : group;
       html += `<div class="line${prefix ? " indent" : ""}"><span><button type="button" class="exp" data-act="expand" data-key="${esc(key)}" aria-expanded="${open}">${
-        open ? "▾" : "▸"
-      } ${esc(label)}</button> <span class="dim">· ${list.length} rules</span> ${nodeStatus(list, set)}</span>${toggle(
+        ICON_DISCLOSURE
+      }${esc(label)}</button> <span class="dim">· ${list.length} rules</span> ${nodeStatus(list, set)}</span>${toggle(
         `data-act="group" data-set="${esc(set.id)}" data-group="${esc(group)}"`,
         list,
         `${label} enabled`
@@ -152,8 +154,8 @@ export function createChecksView(deps: Deps) {
         const key = nodeKey(set.id, "h", head);
         const open = expanded.has(key);
         html += `<div class="line"><span><button type="button" class="exp" data-act="expand" data-key="${esc(key)}" aria-expanded="${open}">${
-          open ? "▾" : "▸"
-        } ${esc(head || "Other")}</button> <span class="dim">· ${list.length} rules</span> ${nodeStatus(list, set)}</span>${toggle(
+          ICON_DISCLOSURE
+        }${esc(head || "Other")}</button> <span class="dim">· ${list.length} rules</span> ${nodeStatus(list, set)}</span>${toggle(
           `data-act="ids" data-set="${esc(set.id)}" data-key="${esc(key)}"`,
           list,
           `${head} enabled`
@@ -165,8 +167,8 @@ export function createChecksView(deps: Deps) {
       const key = nodeKey(set.id, "u", "");
       const open = expanded.has(key);
       html += `<div class="line"><span><button type="button" class="exp" data-act="expand" data-key="${esc(key)}" aria-expanded="${open}">${
-        open ? "▾" : "▸"
-      } Not supported</button> <span class="dim">· ${unsupported.length} rules</span></span><span></span></div>`;
+        ICON_DISCLOSURE
+      }Not supported</button> <span class="dim">· ${unsupported.length} rules</span></span><span></span></div>`;
       if (open) {
         html += `<div class="rules">${unsupported
           .map((r) => `<div class="line rule-line"><span>${esc(r.name)} <span class="dim">· ${esc(r.unsupportedReason ?? "")}</span></span><span></span></div>`)
@@ -177,14 +179,14 @@ export function createChecksView(deps: Deps) {
   }
 
   function renderRules() {
-    let html = `<h3 class="sec-title">Rules</h3><div class="lab"><span>rule sets</span><span><input type="file" id="import-xml" accept=".xml,text/xml" hidden /><button type="button" class="text-link" data-act="import">import xml</button></span></div>`;
+    let html = `<h3 class="sec-title">Rules</h3><div class="lab"><span>rule sets</span><span><input type="file" id="import-xml" accept=".xml,text/xml" hidden /><button type="button" class="text-link" data-act="import">Import XML</button></span></div>`;
     if (!loaded) html += `<div class="empty"><b>Loading rules…</b><span>Reading rule sets from the server.</span></div>`;
     else if (rulesets.length === 0) {
       html += `<div class="empty"><b>No rules yet</b><span>Import a Model Checker checkset (such as IFC-SG), or describe a rule below and the agent will create it.</span></div>`;
     } else html += rulesets.map(setCard).join("");
     html += `<div class="lab"><span>create a rule</span></div>
       <label class="ask"><input id="rule-ask" type="text" placeholder='Describe it — "every room needs a Department"' autocomplete="off" />
-      <button type="button" class="text-link" data-act="ask">ask agent ↗</button></label>`;
+      <button type="button" class="text-link" data-act="ask">Ask agent</button></label>`;
     // keep a half-typed rule across redraws (a toggle or a refresh redraws this part)
     const typed = (part("rules").querySelector("#rule-ask") as HTMLInputElement | null)?.value ?? "";
     part("rules").innerHTML = html;
@@ -201,7 +203,7 @@ export function createChecksView(deps: Deps) {
       await fn();
       deps.setStatus(done);
     } catch (error) {
-      deps.setStatus(error instanceof Error ? error.message : String(error));
+      deps.setStatus(error instanceof Error ? error.message : String(error), "error");
     }
     rulesets = await api.listRules().catch(() => rulesets);
     renderRules();
@@ -277,7 +279,7 @@ export function createChecksView(deps: Deps) {
     const input = deps.checksView.querySelector("#rule-ask") as HTMLInputElement | null;
     const description = input?.value.trim() ?? "";
     if (!description) {
-      deps.setStatus("Describe the rule first");
+      deps.setStatus("Describe the rule first", "error");
       input?.focus();
       return;
     }
@@ -301,7 +303,7 @@ export function createChecksView(deps: Deps) {
       deps.setStatus("Copied — paste it to your agent");
       if (input) input.value = "";
     } catch {
-      deps.setStatus(`Couldn't send (${sendError instanceof Error ? sendError.message : String(sendError)}) — copy the text and ask your agent`);
+      deps.setStatus(`Couldn't send (${sendError instanceof Error ? sendError.message : String(sendError)}) — copy the text and ask your agent`, "error");
     }
   }
 
@@ -312,7 +314,7 @@ export function createChecksView(deps: Deps) {
     try {
       runningId = await api.runChecks();
     } catch (error) {
-      deps.setStatus(error instanceof Error ? error.message : String(error));
+      deps.setStatus(error instanceof Error ? error.message : String(error), "error");
       return;
     }
     deps.setStatus(`Check run #${runningId} started`);
@@ -338,10 +340,13 @@ export function createChecksView(deps: Deps) {
         runningId = null;
         rulesets = await api.listRules().catch(() => rulesets);
         loaded = true;
-        deps.setStatus(res.run?.status === "failed" ? `Check failed: ${res.run.error}` : `Checks done — ${pctText(passingPct(res))} of rules passing`);
+        deps.setStatus(
+          res.run?.status === "failed" ? `Check failed: ${res.run.error}` : `Checks done — ${pctText(passingPct(res))} of rules passing`,
+          res.run?.status === "failed" ? "error" : "info"
+        );
       } catch (error) {
         runningId = null;
-        deps.setStatus(error instanceof Error ? error.message : String(error));
+        deps.setStatus(error instanceof Error ? error.message : String(error), "error");
       }
       renderActive();
       deps.onChange();

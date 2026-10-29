@@ -194,13 +194,10 @@ const CATEGORY_GLYPHS: Record<string, string> = {
   Parking: '<rect x="1.5" y="1.5" width="9" height="9"/><path d="M4.5 9V3.5h2a1.6 1.6 0 0 1 0 3.2h-2"/>',
 };
 const DEFAULT_GLYPH = '<circle cx="6" cy="6" r="4"/>';
-const FILTER_GLYPHS: Record<Exclude<keyof FilterState, "search" | "category">, string> = {
-  level: '<path d="M1 10.5h3v-3h3v-3h3v-3"/>',
-  family: '<path d="M6 1l5 3v4l-5 3-5-3V4z"/>',
-  type: '<path d="M6 1l5 5-5 5-5-5z"/>',
-  link: '<path d="M5 7l2-2M4.2 5.4L3 6.6a2 2 0 0 0 2.8 2.8L7 8.2M7.8 6.6L9 5.4a2 2 0 0 0-2.8-2.8L5 3.8"/>',
-};
-
+const ICON_PENCIL =
+  '<svg class="i edit-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>';
+const ICON_CHEVRON_UP =
+  '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>';
 const ICON_CHEVRON =
   '<svg class="i chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
 const ICON_LOCK =
@@ -249,16 +246,18 @@ const filters: FilterState = {
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const table = $("table-container");
+/** The notice line above the dock: write it with say() / sayError(). */
 const status = $("status");
+/** Header line under the title: what is loaded and shown. */
+const summary = $("summary");
 const chips = $("chips");
 const filterLink = $<HTMLSelectElement>("filter-link");
 const filterLevel = $<HTMLSelectElement>("filter-level");
 const filterFamily = $<HTMLSelectElement>("filter-family");
 const filterType = $<HTMLSelectElement>("filter-type");
 const filterSearch = $<HTMLInputElement>("filter-search");
-const filtersPop = $("filters-pop");
-const filtersTrigger = $<HTMLButtonElement>("filters-trigger");
-const filtersCount = $("filters-count");
+const pickLink = $("pick-link");
+const btnClearFilters = $<HTMLButtonElement>("btn-clear-filters");
 const paramPicker = $("param-picker");
 const paramPickerTrigger = $<HTMLButtonElement>("param-picker-trigger");
 const paramPickerLabel = $("param-picker-label");
@@ -373,6 +372,67 @@ function escapeHtml(value: string) {
     .replaceAll('"', "&quot;");
 }
 
+type NoticeKind = "info" | "error";
+let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+/** A result or error is on the notice line, so the next-step hint waits. */
+let noticeHeld = false;
+
+/** Show a result or error above the dock. Results give way to the next-step hint after a while; errors stay. */
+function say(message: string, kind: NoticeKind = "info") {
+  if (noticeTimer) clearTimeout(noticeTimer);
+  noticeHeld = Boolean(message);
+  status.textContent = message;
+  status.className = kind === "error" ? "notice-line error" : "notice-line";
+  if (!message) showHint();
+  else if (kind === "info") {
+    noticeTimer = setTimeout(() => {
+      noticeHeld = false;
+      showHint();
+    }, 8000);
+  }
+}
+
+function sayError(error: unknown) {
+  say(readableError(error), "error");
+}
+
+/** Error text for people: the SDK reports a malformed reply as a JSON list of schema issues. */
+function readableError(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  if (text.trimStart().startsWith("[")) {
+    try {
+      const issues = JSON.parse(text) as { message?: string }[];
+      if (Array.isArray(issues) && issues.length) {
+        const detail = issues[0]?.message ? ` (${issues[0].message})` : "";
+        return `Revit sent a reply the app couldn't read${detail}. Try again, or reload from Revit.`;
+      }
+    } catch {
+      // Not JSON: show it as it is.
+    }
+  }
+  return text;
+}
+
+/** What to do next, shown on the notice line when nothing has just happened. */
+function nextStepHint(): string {
+  if (activeTab !== "elements" || allRows.length === 0) return "";
+  const pending = pendingCount();
+  if (pending) {
+    return `${plural(pending, "change")} not in Revit yet. Apply to write ${pending === 1 ? "it" : "them"} to the model, or Discard.`;
+  }
+  const checkedRows = checkedHostIds().length;
+  if (checkedRows > 1) {
+    return `Edits on a checked row apply to all ${checkedRows} checked rows. Show in Revit and Isolate also use them.`;
+  }
+  return "Click a type to change it, double-click a value to edit. Changes wait here until you apply them.";
+}
+
+function showHint() {
+  if (noticeHeld || busy) return;
+  status.textContent = nextStepHint();
+  status.className = "notice-line hint";
+}
+
 function glyph(markup: string) {
   return `<svg class="glyph" viewBox="0 0 12 12" aria-hidden="true">${markup}</svg>`;
 }
@@ -418,13 +478,13 @@ function dataFromResult(result: ToolResult | undefined): ScheduleData | undefine
     text.startsWith("mcp_apps_get_schedule_data failed") ||
     text.startsWith("get_schedule_data failed")
   ) {
-    if (text) status.textContent = text;
+    if (text) say(text, "error");
     return undefined;
   }
   try {
     return JSON.parse(text) as ScheduleData;
   } catch {
-    status.textContent = "Couldn't read the schedule data";
+    say("Couldn't read the schedule data", "error");
     return undefined;
   }
 }
@@ -463,36 +523,52 @@ function uniqueValues(key: string): string[] {
 }
 
 function fillSelect(select: HTMLSelectElement, values: string[], current: string) {
+  // Keep the "All levels" / "All families" … wording of the empty option from app.html.
+  const all = select.options[0]?.textContent ?? "All";
   select.innerHTML =
-    `<option value="">All</option>` +
+    `<option value="">${escapeHtml(all)}</option>` +
     values.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("");
   select.value = values.includes(current) ? current : "";
+  // A set filter fills its pill in, so the active filters read at a glance.
+  select.parentElement?.classList.toggle("on", Boolean(select.value));
+  select.title = select.value;
   return select.value;
 }
 
 function refreshFilterOptions() {
-  filters.link = fillSelect(filterLink, uniqueValues("link"), filters.link);
+  const links = uniqueValues("link");
+  filters.link = fillSelect(filterLink, links, filters.link);
+  pickLink.hidden = links.length === 0;
   filters.level = fillSelect(filterLevel, uniqueValues("level"), filters.level);
   if (filters.category && !uniqueValues("category").includes(filters.category)) filters.category = "";
   filters.family = fillSelect(filterFamily, uniqueValues("family"), filters.family);
   filters.type = fillSelect(filterType, uniqueValues("type"), filters.type);
-  const active = [filters.level, filters.family, filters.type, filters.link].filter(Boolean).length;
-  filtersCount.textContent = active ? String(active) : "";
 }
 
-function rowMatches(row: Record<string, string>): boolean {
+/** Lower-cased text of every cell, built once per loaded row, so a search keystroke is one includes() per row. */
+const rowSearchText = new WeakMap<Record<string, string>, string>();
+
+function searchTextOf(row: Record<string, string>): string {
+  let text = rowSearchText.get(row);
+  if (text == null) {
+    text = Object.values(row).join("\n").toLowerCase();
+    rowSearchText.set(row, text);
+  }
+  return text;
+}
+
+function rowMatches(row: Record<string, string>, search: string): boolean {
   if (filters.link && (row.link ?? "") !== filters.link) return false;
   if (filters.level && (row.level ?? "") !== filters.level) return false;
   if (filters.category && (row.category ?? "") !== filters.category) return false;
   if (filters.family && (row.family ?? "") !== filters.family) return false;
   if (filters.type && (row.type ?? "") !== filters.type) return false;
-  const search = filters.search.trim().toLowerCase();
-  if (!search) return true;
-  return Object.values(row).some((value) => String(value).toLowerCase().includes(search));
+  return !search || searchTextOf(row).includes(search);
 }
 
 function filteredRows(): Record<string, string>[] {
-  return allRows.filter(rowMatches);
+  const search = filters.search.trim().toLowerCase();
+  return allRows.filter((row) => rowMatches(row, search));
 }
 
 function filteredIds(): number[] {
@@ -543,15 +619,6 @@ function renderChips() {
       html += `<button type="button" class="chip ghost" data-more="1">fewer</button>`;
     }
   }
-  const active = (Object.keys(FILTER_GLYPHS) as (keyof typeof FILTER_GLYPHS)[]).filter((key) => filters[key]);
-  if (active.length) {
-    if (html) html += `<span class="chip-sep" aria-hidden="true"></span>`;
-    for (const key of active) {
-      html += `<button type="button" class="chip on" data-clear="${key}" title="Clear ${key} filter">${glyph(
-        FILTER_GLYPHS[key]
-      )}${escapeHtml(filters[key])} ${ICON_X}</button>`;
-    }
-  }
   chips.innerHTML = html;
   chips.hidden = !html;
 }
@@ -564,13 +631,9 @@ chips.addEventListener("click", (event) => {
     renderChips();
     return;
   }
-  if (chip.dataset.category != null) {
-    const name = chip.dataset.category;
-    filters.category = filters.category === name ? "" : name;
-  } else if (chip.dataset.clear) {
-    const key = chip.dataset.clear as keyof typeof FILTER_GLYPHS;
-    filters[key] = "";
-  }
+  if (chip.dataset.category == null) return;
+  const name = chip.dataset.category;
+  filters.category = filters.category === name ? "" : name;
   refreshFilterOptions();
   render();
 });
@@ -643,11 +706,10 @@ function refreshParamPicker() {
 }
 
 // ---------------------------------------------------------------------------
-// Popovers (filters, columns)
+// Popovers (columns)
 // ---------------------------------------------------------------------------
 
 const popovers: { wrap: HTMLElement; trigger: HTMLButtonElement; onOpen?: () => void }[] = [
-  { wrap: filtersPop, trigger: filtersTrigger },
   {
     wrap: paramPicker,
     trigger: paramPickerTrigger,
@@ -718,9 +780,13 @@ function syncFiltersFromDom() {
 for (const el of [filterLink, filterLevel, filterFamily, filterType]) {
   el.addEventListener("change", syncFiltersFromDom);
 }
-filterSearch.addEventListener("input", syncFiltersFromDom);
+// Search does not narrow the filter dropdowns, so a keystroke only re-filters the rows.
+filterSearch.addEventListener("input", () => {
+  filters.search = filterSearch.value;
+  render();
+});
 
-$("btn-clear-filters").addEventListener("click", () => {
+btnClearFilters.addEventListener("click", () => {
   filters.link = "";
   filters.level = "";
   filters.category = "";
@@ -798,7 +864,7 @@ async function ensureTypesForCategory(category: string): Promise<FamilyTypeInfo[
     typesByCategory.set(key, types);
     return types;
   } catch (error) {
-    status.textContent = error instanceof Error ? error.message : String(error);
+    sayError(error);
     typesByCategory.set(key, []);
     return [];
   } finally {
@@ -853,11 +919,17 @@ async function openTypeMenu(anchor: HTMLButtonElement, row: Record<string, strin
     return;
   }
 
+  // One rule for every edit: on a checked row it changes all checked rows (of this category here);
+  // on an unchecked row only that row, unless ctrl+click adds the checked ones.
   const bulkIds = checkedHostIds(category);
-  if (bulkIds.length > 1 || (bulkIds.length === 1 && bulkIds[0] !== elementId)) {
+  const scopeIds = bulkIds.length > 1 && bulkIds.includes(elementId) ? bulkIds : null;
+  const what = escapeHtml(category.toLowerCase() || "elements");
+  if (scopeIds) {
+    typeMenu.insertAdjacentHTML("beforeend", `<div class="menu-hint">Changes <b>all ${scopeIds.length} checked</b> ${what}</div>`);
+  } else if (bulkIds.length > 0 && !bulkIds.includes(elementId)) {
     typeMenu.insertAdjacentHTML(
       "beforeend",
-      `<div class="menu-hint">ctrl+click → all ${bulkIds.length} selected ${escapeHtml(category.toLowerCase())}</div>`
+      `<div class="menu-hint">Changes this row only · ctrl+click to include the ${bulkIds.length} checked</div>`
     );
   }
 
@@ -874,15 +946,20 @@ async function openTypeMenu(anchor: HTMLButtonElement, row: Record<string, strin
     choice.addEventListener("click", (event) => {
       event.stopPropagation();
       const pending = { typeId: tid, family, type: typeName };
-      const targets = event.ctrlKey || event.metaKey ? new Set([elementId, ...bulkIds]) : new Set([elementId]);
+      const targets = scopeIds
+        ? new Set(scopeIds)
+        : event.ctrlKey || event.metaKey
+          ? new Set([elementId, ...bulkIds])
+          : new Set([elementId]);
       for (const id of targets) pendingTypes.set(id, pending);
       selectedCell = { rowIndex, column: "family" };
       closeTypeMenu();
       render();
-      status.textContent =
+      say(
         targets.size > 1
-          ? `${typeName} queued for ${targets.size} elements. Review them under unsaved, then Apply.`
-          : `${typeName} queued. Drag the dot down to fill, then Apply.`;
+          ? `${typeName} queued for ${targets.size} elements. Apply to Revit when ready.`
+          : `${typeName} queued. Drag the dot down to fill, then Apply to Revit.`
+      );
     });
     typeMenu.appendChild(choice);
   }
@@ -934,24 +1011,27 @@ function paintFillRange(drag: FillDrag): { fill: number; skip: number } {
   let fill = 0;
   let skip = 0;
   for (let i = lo; i <= hi; i++) {
-    const td = table.querySelector(cellSelector(i, drag.column)) as HTMLElement | null;
     const row = viewRows[i];
-    if (!td || !row) continue;
+    if (!row) continue;
+    // Every row in the range counts; only the rendered window has cells to paint.
+    const td =
+      i >= windowStart && i < windowEnd ? (table.querySelector(cellSelector(i, drag.column)) as HTMLElement | null) : null;
     if (i === drag.startIndex) {
-      td.classList.add("fill-source");
+      td?.classList.add("fill-source");
       continue;
     }
     const reason = fillSkipReason(row, drag);
+    if (reason) skip++;
+    else fill++;
+    if (!td) continue;
     if (reason) {
       td.classList.add("fill-skip");
       td.dataset.fillSkip = reason;
-      skip++;
     } else {
       td.classList.add("fill-range");
       td.dataset.fillValue = next || "(empty)";
       const old = currentFillValue(row, drag);
       if (old && old !== next) td.dataset.fillOld = old;
-      fill++;
     }
     if (i === lo) td.classList.add("fill-start");
     if (i === hi) td.classList.add("fill-end");
@@ -1014,7 +1094,11 @@ function autoScrollStep() {
   dy = Math.max(-40, Math.min(40, Math.round(dy) || Math.sign(dy)));
   const before = table.scrollTop;
   table.scrollTop += dy;
-  if (table.scrollTop !== before) updateFillTarget();
+  if (table.scrollTop !== before) {
+    // The scroll event lands a frame later; render the rows under the pointer before hit-testing them.
+    syncRowWindow();
+    updateFillTarget();
+  }
   autoScrollFrame = requestAnimationFrame(autoScrollStep);
 }
 
@@ -1039,7 +1123,7 @@ function cancelFill() {
   if (!fillDrag) return;
   endFill();
   paintSelection();
-  status.textContent = "Fill cancelled";
+  say("Fill cancelled");
 }
 
 function applyFillRange(drag: FillDrag) {
@@ -1064,8 +1148,7 @@ function applyFillRange(drag: FillDrag) {
   selectedCell = { rowIndex: drag.endIndex, column: drag.column };
   render();
   const what = drag.kind === "type" ? drag.pendingType?.type ?? "" : `${drag.paramName} = "${drag.paramValue ?? ""}"`;
-  status.textContent =
-    `Filled ${plural(applied, "row")} with ${what}` + (skipped ? ` · skipped ${skipped}` : "") + ". Apply when ready.";
+  say(`Filled ${plural(applied, "row")} with ${what}` + (skipped ? ` · skipped ${skipped}` : "") + ". Apply when ready.");
 }
 
 document.addEventListener("mousemove", (event) => {
@@ -1112,11 +1195,79 @@ function columnsForTable(rows: Record<string, string>[]): string[] {
   return [...head, ...paramCols];
 }
 
+// The table renders only the rows near the scroll position, padded by spacer rows to the full height.
+// A whole model is thousands of rows; writing them all made each keystroke or click take most of a second.
+const WINDOW_CHUNK = 40;
+/** Matches `tbody tr[data-row-index]` in app.html; remeasured on render in case host fonts make rows taller. */
+let rowHeight = 40;
+let tableColumns: string[] = [];
+let windowStart = 0;
+let windowEnd = 0;
+/** Set while a parameter cell is being edited; a window re-render commits it first rather than dropping it. */
+let commitCellEdit: (() => void) | null = null;
+
+/** Rows to render for the current scroll position, snapped to chunks so small scrolls reuse the same rows. */
+function rowWindow(): [number, number] {
+  const first = Math.floor(table.scrollTop / rowHeight);
+  const start = Math.max(0, (Math.floor(first / WINDOW_CHUNK) - 1) * WINDOW_CHUNK);
+  const end = Math.min(viewRows.length, start + Math.ceil((table.clientHeight || 460) / rowHeight) + WINDOW_CHUNK * 3);
+  return [start, end];
+}
+
+function spacerRow(rows: number) {
+  return rows > 0
+    ? `<tr class="spacer" aria-hidden="true"><td colspan="${tableColumns.length + 1}" style="height:${rows * rowHeight}px"></td></tr>`
+    : "";
+}
+
+function bodyHtml(start: number, end: number) {
+  windowStart = start;
+  windowEnd = end;
+  let html = spacerRow(start);
+  for (let rowIndex = start; rowIndex < end; rowIndex++) html += rowHtml(viewRows[rowIndex], rowIndex);
+  return html + spacerRow(viewRows.length - end);
+}
+
+/** The focused checkbox or type button in a row, so a window re-render can put focus back. */
+function focusedRowControl(): { rowIndex: number; column: string } | null {
+  const el = document.activeElement as HTMLElement | null;
+  const tr = el?.closest("tr[data-row-index]") as HTMLElement | null;
+  if (!el || !tr || !table.contains(tr)) return null;
+  return { rowIndex: Number(tr.dataset.rowIndex), column: (el.closest("td") as HTMLElement | null)?.dataset.column ?? "" };
+}
+
+function restoreRowFocus(focus: { rowIndex: number; column: string } | null) {
+  if (!focus) return;
+  const tr = table.querySelector(`tr[data-row-index="${focus.rowIndex}"]`);
+  const target = focus.column
+    ? tr?.querySelector(`td[data-column="${CSS.escape(focus.column)}"] button`)
+    : tr?.querySelector("input[data-id]");
+  (target as HTMLElement | null)?.focus({ preventScroll: true });
+}
+
+/** Re-render the row window when scrolling has moved past it. */
+function syncRowWindow(force = false) {
+  const tbody = table.querySelector("tbody");
+  if (!tbody) return;
+  const [start, end] = rowWindow();
+  if (!force && start === windowStart && end === windowEnd) return;
+  if (commitCellEdit) {
+    commitCellEdit(); // keeps the edit, and renders the table again at the new position
+    return;
+  }
+  const focus = focusedRowControl();
+  tbody.innerHTML = bodyHtml(start, end);
+  restoreRowFocus(focus);
+  paintSelection();
+  if (fillDrag) updateFillBadge(paintFillRange(fillDrag));
+}
+
 function render() {
   closeTypeMenu();
   const rows = filteredRows();
   viewRows = rows;
   renderChips();
+  btnClearFilters.hidden = !Object.values(filters).some((value) => value.trim());
 
   if (allRows.length === 0) {
     table.innerHTML = `<div class="empty"><b>No elements loaded</b><span>Ask the agent to load a schedule, or reload from Revit.</span></div>`;
@@ -1125,83 +1276,97 @@ function render() {
   }
   if (rows.length === 0) {
     table.innerHTML = `<div class="empty"><b>No matches</b><span>Try another search, or clear the filters.</span></div>`;
-    status.textContent = `0 shown / ${allRows.length} loaded`;
+    summary.textContent = `0 shown / ${allRows.length} loaded`;
     syncDock();
     return;
   }
 
-  const visible = columnsForTable(rows);
+  tableColumns = columnsForTable(rows);
   const allFilteredChecked = rows.every((row) => checked.has(Number(row.elementId)));
-  const labels: Record<string, string> = { family: "type" };
+  // Capitalised like the Revit parameter names beside them.
+  const labels: Record<string, string> = { family: "Type", level: "Level", category: "Category", link: "Link" };
 
   let html = "<table><thead><tr>";
   html += `<th class="check-col"><input type="checkbox" id="check-all" aria-label="Select all in view" title="Select all. Shift-click rows to select a range."${
     allFilteredChecked ? " checked" : ""
   } /></th>`;
-  for (const column of visible) {
-    html += `<th>${escapeHtml(labels[column] ?? column)}</th>`;
+  // A pencil marks the columns you can change; linked rows stay read-only.
+  const editable = rows.some(isHostRow);
+  for (const column of tableColumns) {
+    const mark = editable && (column === "family" || isParamColumn(column));
+    html += `<th${mark ? ' title="Editable: click a type, or double-click a value"' : ""}>${escapeHtml(labels[column] ?? column)}${
+      mark ? ICON_PENCIL : ""
+    }</th>`;
   }
-  html += "</tr></thead><tbody>";
-
-  rows.forEach((row, rowIndex) => {
-    const id = Number(row.elementId);
-    const host = isHostRow(row);
-    const rowClass = [checked.has(id) ? "sel" : "", pendingTypes.has(id) ? "dirty" : ""].filter(Boolean).join(" ");
-    html += `<tr data-row-index="${rowIndex}"${rowClass ? ` class="${rowClass}"` : ""}>`;
-    html += `<td class="check-col"><input type="checkbox" data-id="${escapeHtml(row.elementId)}" aria-label="Select row" title="Shift-click to select a range"${
-      checked.has(id) ? " checked" : ""
-    } /></td>`;
-    for (const column of visible) {
-      const at = `data-column="${escapeHtml(column)}" data-row-index="${rowIndex}"`;
-      if (column === "family") {
-        const pending = pendingTypes.get(id);
-        const label = pending?.type || (row.type ?? "").trim() || (row.family ?? "");
-        const title = escapeHtml((row.family ?? "") + (row.type ? " · " + row.type : ""));
-        if (host) {
-          html += `<td class="family-cell" ${at}><button type="button" class="type-face" title="${title}"><span class="label${
-            pending ? " hl" : ""
-          }">${escapeHtml(label || "Select type")}</span>${ICON_CHEVRON}</button><span class="fill-handle${
-            pending ? "" : " idle"
-          }" title="Drag to fill this type"></span></td>`;
-        } else {
-          html += `<td class="family-cell readonly" ${at} title="${title}"><span class="cat-cell">${ICON_LOCK}${escapeHtml(
-            label
-          )}</span></td>`;
-        }
-      } else if (column === "level") {
-        html += `<td class="level-cell" ${at}>${escapeHtml(row.level ?? "")}</td>`;
-      } else if (column === "category") {
-        html += `<td ${at}><span class="cat-cell">${categoryGlyph(row.category ?? "")}${escapeHtml(
-          row.category ?? ""
-        )}</span></td>`;
-      } else if (isParamColumn(column)) {
-        const value = displayParamValue(row, column, id);
-        const dirty = pendingParams.has(paramKey(id, column));
-        if (host) {
-          const inner = dirty ? `<span class="hl">${escapeHtml(value) || "(empty)"}</span>` : escapeHtml(value);
-          html += `<td class="param-cell editable" ${at} title="Double-click to edit"><span class="cell-value">${inner}</span><span class="fill-handle" title="Drag to fill"></span></td>`;
-        } else {
-          html += `<td class="param-cell readonly" ${at} title="Linked — read-only">${escapeHtml(value)}</td>`;
-        }
-      } else {
-        html += `<td class="muted" ${at}>${escapeHtml(row[column] ?? "")}</td>`;
-      }
-    }
-    html += "</tr>";
-  });
-  html += "</tbody></table>";
+  const [start, end] = rowWindow();
+  html += `</tr></thead><tbody>${bodyHtml(start, end)}</tbody></table>`;
   table.innerHTML = html;
 
+  // Fewer rows can clamp the scroll position, and host fonts can change the row height:
+  // either moves the window, so settle it before painting.
+  const measured = table.querySelector("tbody tr[data-row-index]")?.getBoundingClientRect().height;
+  const heightChanged = measured != null && measured > 0 && Math.abs(measured - rowHeight) > 0.5;
+  if (heightChanged) rowHeight = measured;
+  syncRowWindow(heightChanged);
+
   paintSelection();
-  status.textContent =
+  summary.textContent =
     `${rows.length} shown / ${allRows.length} loaded` +
     (lastTotalMatched > allRows.length ? ` · ${lastTotalMatched} matched` : "");
   syncDock();
 }
 
+function rowHtml(row: Record<string, string>, rowIndex: number) {
+  const id = Number(row.elementId);
+  const host = isHostRow(row);
+  const rowClass = [checked.has(id) ? "sel" : "", pendingTypes.has(id) ? "dirty" : ""].filter(Boolean).join(" ");
+  let html = `<tr data-row-index="${rowIndex}"${rowClass ? ` class="${rowClass}"` : ""}>`;
+  html += `<td class="check-col"><input type="checkbox" data-id="${escapeHtml(row.elementId)}" aria-label="Select row" title="Shift-click to select a range"${
+    checked.has(id) ? " checked" : ""
+  } /></td>`;
+  for (const column of tableColumns) {
+    const at = `data-column="${escapeHtml(column)}" data-row-index="${rowIndex}"`;
+    if (column === "family") {
+      const pending = pendingTypes.get(id);
+      const label = pending?.type || (row.type ?? "").trim() || (row.family ?? "");
+      const title = escapeHtml((row.family ?? "") + (row.type ? " · " + row.type : ""));
+      if (host) {
+        html += `<td class="family-cell" ${at}><button type="button" class="type-face" title="${title}"><span class="label${
+          pending ? " hl" : ""
+        }">${escapeHtml(label || "Select type")}</span>${ICON_CHEVRON}</button><span class="fill-handle${
+          pending ? "" : " idle"
+        }" title="Drag to fill this type"></span></td>`;
+      } else {
+        html += `<td class="family-cell readonly" ${at} title="${title}"><span class="cat-cell">${ICON_LOCK}${escapeHtml(
+          label
+        )}</span></td>`;
+      }
+    } else if (column === "level") {
+      html += `<td class="level-cell" ${at}>${escapeHtml(row.level ?? "")}</td>`;
+    } else if (column === "category") {
+      html += `<td ${at}><span class="cat-cell">${categoryGlyph(row.category ?? "")}${escapeHtml(
+        row.category ?? ""
+      )}</span></td>`;
+    } else if (isParamColumn(column)) {
+      const value = displayParamValue(row, column, id);
+      const dirty = pendingParams.has(paramKey(id, column));
+      if (host) {
+        const inner = dirty ? `<span class="hl">${escapeHtml(value) || "(empty)"}</span>` : escapeHtml(value);
+        html += `<td class="param-cell editable" ${at} title="Double-click to edit"><span class="cell-value">${inner}</span><span class="fill-handle" title="Drag to fill"></span></td>`;
+      } else {
+        html += `<td class="param-cell readonly" ${at} title="Linked — read-only">${escapeHtml(value)}</td>`;
+      }
+    } else {
+      html += `<td class="muted" ${at}>${escapeHtml(row[column] ?? "")}</td>`;
+    }
+  }
+  return html + "</tr>";
+}
+
 function paintRowChecks(from: number, to: number) {
-  const lo = Math.min(from, to);
-  const hi = Math.max(from, to);
+  // Rows outside the rendered window pick up their checks when they scroll in.
+  const lo = Math.max(Math.min(from, to), windowStart);
+  const hi = Math.min(Math.max(from, to), windowEnd - 1);
   for (let i = lo; i <= hi; i++) {
     const tr = table.querySelector(`tr[data-row-index="${i}"]`);
     const box = tr?.querySelector("input[data-id]") as HTMLInputElement | null;
@@ -1328,8 +1493,11 @@ table.addEventListener("click", (event) => {
     return;
   }
   if (cell.td.classList.contains("editable")) {
+    const again = selectedCell?.rowIndex === cell.rowIndex && selectedCell.column === cell.column;
     selectedCell = { rowIndex: cell.rowIndex, column: cell.column };
     paintSelection();
+    // A second click on the selected value edits it, as in a spreadsheet.
+    if (again) beginCellEdit(cell.td, Number(cell.row.elementId), cell.column, cell.rowIndex);
   }
 });
 
@@ -1340,7 +1508,70 @@ table.addEventListener("dblclick", (event) => {
   beginCellEdit(cell.td, Number(cell.row.elementId), cell.column, cell.rowIndex);
 });
 
-table.addEventListener("scroll", () => closeTypeMenu());
+/** Columns the keyboard moves between: the type, then the parameter columns. */
+function editableColumns(): string[] {
+  return tableColumns.filter((column) => column === "family" || isParamColumn(column));
+}
+
+/** Scroll the table just enough to show a row below the sticky header, and render it. */
+function scrollRowIntoView(rowIndex: number) {
+  const head = table.querySelector("thead")?.getBoundingClientRect().height ?? 34;
+  const top = rowIndex * rowHeight;
+  if (top < table.scrollTop) table.scrollTop = top;
+  else if (top + rowHeight + head > table.scrollTop + table.clientHeight) {
+    table.scrollTop = top + rowHeight + head - table.clientHeight;
+  }
+  syncRowWindow();
+}
+
+// Keyboard on the selected cell: arrows move, Enter or F2 edits (or opens the type menu).
+document.addEventListener("keydown", (event) => {
+  if (activeTab !== "elements" || !selectedCell || fillDrag || event.altKey || event.ctrlKey || event.metaKey) return;
+  const target = event.target as HTMLElement;
+  if (target.closest("input, select, textarea, #type-menu")) return;
+  const onFace = Boolean(target.closest("button.type-face"));
+  if (target.closest("button") && !onFace) return;
+  const cols = editableColumns();
+  if (!cols.length) return;
+  let { rowIndex } = selectedCell;
+  let col = Math.max(0, cols.indexOf(selectedCell.column));
+  if (event.key === "Enter" || event.key === "F2") {
+    if (onFace && event.key === "Enter") return; // the focused type button opens its menu itself
+    event.preventDefault();
+    scrollRowIntoView(rowIndex);
+    const td = table.querySelector(cellSelector(rowIndex, selectedCell.column)) as HTMLElement | null;
+    const row = viewRows[rowIndex];
+    if (!td || !row) return;
+    if (td.classList.contains("editable")) beginCellEdit(td, Number(row.elementId), selectedCell.column, rowIndex);
+    else td.querySelector<HTMLButtonElement>("button.type-face")?.click();
+    return;
+  }
+  if (event.key === "ArrowUp") rowIndex--;
+  else if (event.key === "ArrowDown") rowIndex++;
+  else if (event.key === "ArrowLeft") col--;
+  else if (event.key === "ArrowRight") col++;
+  else return;
+  event.preventDefault();
+  rowIndex = Math.max(0, Math.min(viewRows.length - 1, rowIndex));
+  col = Math.max(0, Math.min(cols.length - 1, col));
+  selectedCell = { rowIndex, column: cols[col] };
+  closeTypeMenu();
+  scrollRowIntoView(rowIndex);
+  paintSelection();
+  // Focus follows the selection: onto its type button, or off the old one so keys keep reaching the table.
+  const face = table.querySelector(`${cellSelector(rowIndex, cols[col])} button.type-face`) as HTMLButtonElement | null;
+  if (face) face.focus({ preventScroll: true });
+  else (document.activeElement as HTMLElement | null)?.blur();
+});
+
+table.addEventListener(
+  "scroll",
+  () => {
+    closeTypeMenu();
+    syncRowWindow();
+  },
+  { passive: true }
+);
 
 function beginCellEdit(td: HTMLElement, elementId: number, column: string, rowIndex: number) {
   if (td.querySelector("input.cell-edit")) return;
@@ -1353,6 +1584,10 @@ function beginCellEdit(td: HTMLElement, elementId: number, column: string, rowIn
   input.className = "cell-edit";
   input.value = current;
   valueEl.replaceWith(input);
+  // Same rule as the type menu: editing a checked row edits every checked row, and the badge says so.
+  const checkedIds = checkedHostIds();
+  const scoped = checkedIds.length > 1 && checkedIds.includes(elementId);
+  if (scoped) td.insertAdjacentHTML("beforeend", `<span class="edit-scope">all ${checkedIds.length} checked</span>`);
   input.focus();
   input.select();
   let bulk = false;
@@ -1361,18 +1596,21 @@ function beginCellEdit(td: HTMLElement, elementId: number, column: string, rowIn
   const commit = () => {
     if (done) return;
     done = true;
+    commitCellEdit = null;
     const next = input.value;
-    if (bulk) {
-      const targets = new Set([elementId, ...checkedHostIds()]);
+    // ctrl+Enter copies the value to the checked rows even when it did not change.
+    if (bulk || (scoped && next !== current)) {
+      const targets = new Set([elementId, ...checkedIds]);
       for (const id of targets) pendingParams.set(paramKey(id, column), { elementId: id, name: column, value: next });
       render();
-      status.textContent = `${column} = "${next}" queued for ${plural(targets.size, "selected row")}. Apply when ready.`;
+      say(`${column} = "${next}" queued for ${plural(targets.size, "checked row")}. Apply to Revit when ready.`);
       return;
     }
     if (next !== current) pendingParams.set(paramKey(elementId, column), { elementId, name: column, value: next });
     render();
-    if (next !== current) status.textContent = `${column} = "${next}" queued. Drag the dot to fill, then Apply.`;
+    if (next !== current) say(`${column} = "${next}" queued. Drag the dot down to fill, then Apply to Revit.`);
   };
+  commitCellEdit = commit;
   input.addEventListener("blur", commit);
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
@@ -1383,6 +1621,7 @@ function beginCellEdit(td: HTMLElement, elementId: number, column: string, rowIn
       event.preventDefault();
       event.stopPropagation();
       done = true;
+      commitCellEdit = null;
       render();
     }
   });
@@ -1401,11 +1640,12 @@ function syncDock() {
   const ids = targetIds();
   const selectedInView = viewRows.filter((row) => checked.has(Number(row.elementId))).length;
   const scope = filters.category || filters.type || filters.family || "";
+  // Names the set the Revit buttons act on: the checked rows, or else everything in view.
   selCount.textContent = selectedInView
-    ? `${selectedInView} selected`
+    ? `${selectedInView} checked`
     : scope
-      ? `${viewRows.length} ${scope}`
-      : `${viewRows.length} in view`;
+      ? `All ${viewRows.length} ${scope}`
+      : `All ${viewRows.length} in view`;
   btnShow.disabled = busy || (ids.length === 0 && viewRows.length === 0);
   btnIsolate.disabled = busy || (ids.length === 0 && viewRows.length === 0);
   btnSection.hidden = !sectionBoxActive && selectedInView === 0;
@@ -1416,7 +1656,7 @@ function syncDock() {
     : "Section box around the checked elements";
   btnResetView.disabled = busy || allRows.length === 0;
 
-  // 01/02 dock: selection + Apply. 03/04 dock: Run checks (one primary button per view).
+  // Elements dock: Revit view actions + Apply. Checks dock: Run checks (one primary button per view).
   const checksTab = activeTab === "checks";
   dockSelect.hidden = checksTab;
   dockPending.hidden = checksTab || pending === 0;
@@ -1428,21 +1668,31 @@ function syncDock() {
   const listShown = pendingOpen && activeTab === "elements";
   pendingList.hidden = !listShown;
   dock.classList.toggle("open", listShown);
-  btnPending.textContent = `${pending} unsaved ${pendingOpen ? "▾" : "▴"}`;
+  btnPending.innerHTML = `${plural(pending, "change")} to apply ${ICON_CHEVRON_UP}`;
   btnPending.setAttribute("aria-expanded", listShown ? "true" : "false");
-  btnPending.title = pendingOpen ? "Hide the unsaved changes" : "Show the unsaved changes";
-  btnApply.textContent = `Apply ${pending} →`;
+  btnPending.title = pendingOpen ? "Hide the list of changes" : "Review the changes before applying them";
+  btnApply.textContent = pending === 1 ? "Apply to Revit" : `Apply ${pending} to Revit`;
   btnApply.disabled = busy;
   btnDiscard.disabled = busy;
   btnRefresh.classList.toggle("spin", busy);
 
   if (listShown) renderChanges();
+  showHint();
   scheduleModelContext();
 }
 
+/** The "…ing" message of the work in progress, cleared when it ends unless a result has replaced it. */
+let busyNotice = "";
+
 function setBusy(next: boolean, message?: string) {
   busy = next;
-  if (message) status.textContent = message;
+  if (next && message) {
+    say(message);
+    busyNotice = message;
+  } else if (!next) {
+    if (busyNotice && status.textContent === busyNotice) noticeHeld = false;
+    busyNotice = "";
+  }
   syncDock();
 }
 
@@ -1471,9 +1721,7 @@ checks = createChecksView({
   app,
   checksView,
   modelStats: () => dashboardStats ?? null,
-  setStatus: (message) => {
-    status.textContent = message;
-  },
+  setStatus: say,
   escapeHtml,
   categoryGlyph,
   categoryName: (ost) => OST_TO_NAME.get(ost) ?? ost.replace(/^OST_/, "").replace(/([a-z])([A-Z])/g, "$1 $2"),
@@ -1540,7 +1788,7 @@ changesList.addEventListener("click", (event) => {
     }
   }
   render();
-  status.textContent = "Change removed";
+  say("Change removed");
 });
 
 /** Checked rows in view, or every row in view when nothing is checked. */
@@ -1720,11 +1968,13 @@ async function showCategoryInRevit(mode: ShowMode, ost: string, category: string
   try {
     await callSendCode(CATEGORY_VIEW_CODE, [ost, mode === "isolate" ? "isolate" : "select"]);
     const base = mode === "isolate" ? `Isolated ${category}` : `Selected and zoomed ${category}`;
-    status.textContent = skippedLinks
-      ? `${base}. ${plural(skippedLinks, "linked row")} skipped — Revit cannot show elements inside a link one by one.`
-      : base;
+    say(
+      skippedLinks
+        ? `${base}. ${plural(skippedLinks, "linked row")} skipped — Revit cannot show elements inside a link one by one.`
+        : base
+    );
   } catch (error) {
-    status.textContent = error instanceof Error ? error.message : String(error);
+    sayError(error);
   } finally {
     setBusy(false);
   }
@@ -1827,9 +2077,9 @@ async function frameElements(mode: ShowMode, ids: number[], done: string) {
         followUp = followUp ?? message;
       }
     }
-    status.textContent = followUp && isolated ? `${done} (${followUp})` : done;
+    say(followUp && isolated ? `${done} (${followUp})` : done);
   } catch (error) {
-    status.textContent = error instanceof Error ? error.message : String(error);
+    sayError(error);
   } finally {
     setBusy(false);
   }
@@ -1854,11 +2104,13 @@ async function showInRevit(mode: ShowMode) {
           // The links are already hidden if zoom cannot frame the host.
         }
       }
-      status.textContent = hidden
-        ? `Hid ${hidden} linked models. The host stays visible.`
-        : "No linked models to hide";
+      say(
+        hidden
+          ? `Hid ${hidden} linked models. The host stays visible.`
+          : "No linked models to hide"
+      );
     } catch (error) {
-      status.textContent = error instanceof Error ? error.message : String(error);
+      sayError(error);
     } finally {
       setBusy(false);
     }
@@ -1886,7 +2138,7 @@ async function showInRevit(mode: ShowMode) {
   // Linked rows in that set must not become an isolate of the whole link — that looks
   // like Walls did nothing, because the link brings the rest of the model back.
   if ((narrowed || checkedCount > 0) && hostIds.length > SOCKET_ID_LIMIT) {
-    status.textContent = `That is ${hostIds.length} elements, which does not fit in one request. Narrow the filter or check fewer rows.`;
+    say(`That is ${hostIds.length} elements, which does not fit in one request. Narrow the filter or check fewer rows.`, "error");
     return;
   }
   if ((narrowed || checkedCount > 0) && hostIds.length > 0) {
@@ -1894,15 +2146,18 @@ async function showInRevit(mode: ShowMode) {
     return;
   }
   if (narrowed && hostIds.length === 0) {
-    status.textContent = skippedLinks
-      ? "These rows are inside a linked model. Clear the category and Isolate the link — Revit cannot show or isolate elements inside a link one by one."
-      : "Nothing in view to show";
+    if (skippedLinks) {
+      say(
+        "These rows are inside a linked model. Clear the category and Isolate the link — Revit cannot show or isolate elements inside a link one by one.",
+        "error"
+      );
+    } else say("Nothing in view to show");
     return;
   }
 
   const { ids, linkNames, hostCount } = hostTargets(rows);
   if (ids.length === 0) {
-    status.textContent = "Nothing in view to show";
+    say("Nothing in view to show");
     return;
   }
   const busyLabel =
@@ -1917,9 +2172,9 @@ async function showInRevit(mode: ShowMode) {
     }
     await callHostTool("select_elements", ids);
     await callHostTool("zoom_to_elements", ids);
-    status.textContent = showStatus(mode, hostCount, linkNames);
+    say(showStatus(mode, hostCount, linkNames));
   } catch (error) {
-    status.textContent = error instanceof Error ? error.message : String(error);
+    sayError(error);
   } finally {
     setBusy(false);
   }
@@ -1936,9 +2191,9 @@ btnSection.addEventListener("click", async () => {
     try {
       await callSendCode(RESET_SECTION_CODE, []);
       sectionBoxActive = false;
-      status.textContent = "Section box off. View zoomed to fit.";
+      say("Section box off. View zoomed to fit.");
     } catch (error) {
-      status.textContent = error instanceof Error ? error.message : String(error);
+      sayError(error);
     } finally {
       setBusy(false);
     }
@@ -1948,24 +2203,28 @@ btnSection.addEventListener("click", async () => {
   const ids = hostElementIds(rows);
   const skipped = rows.length - ids.length;
   if (ids.length === 0) {
-    status.textContent = skipped
-      ? "Section box needs host elements. Revit cannot box elements inside a link one by one."
-      : "Check a row first";
+    say(
+      skipped
+        ? "Section box needs host elements. Revit cannot box elements inside a link one by one."
+        : "Check a row first"
+    );
     return;
   }
   if (ids.length > SOCKET_ID_LIMIT) {
-    status.textContent = `Section box fits ${SOCKET_ID_LIMIT} elements at a time. Check fewer rows.`;
+    say(`Section box fits ${SOCKET_ID_LIMIT} elements at a time. Check fewer rows.`, "error");
     return;
   }
   setBusy(true, "Creating section box…");
   try {
     await callHostTool("operate_element", ids, "SelectionBox");
     sectionBoxActive = true;
-    status.textContent = skipped
-      ? `Section box around ${plural(ids.length, "element")}. ${plural(skipped, "linked row")} skipped.`
-      : `Section box around ${plural(ids.length, "element")}`;
+    say(
+      skipped
+        ? `Section box around ${plural(ids.length, "element")}. ${plural(skipped, "linked row")} skipped.`
+        : `Section box around ${plural(ids.length, "element")}`
+    );
   } catch (error) {
-    status.textContent = error instanceof Error ? error.message : String(error);
+    sayError(error);
   } finally {
     setBusy(false);
   }
@@ -1976,7 +2235,7 @@ btnResetView.addEventListener("click", async () => {
     ? filteredIds()
     : allRows.map((r) => Number(r.elementId)).filter(Number.isFinite);
   if (ids.length === 0) {
-    status.textContent = "No elements to reset";
+    say("No elements to reset");
     return;
   }
   setBusy(true, "Resetting isolate…");
@@ -1985,9 +2244,9 @@ btnResetView.addEventListener("click", async () => {
       name: "operate_element",
       arguments: { data: { elementIds: ids.slice(0, 1), action: "ResetIsolate" } },
     });
-    status.textContent = "Isolate reset";
+    say("Isolate reset");
   } catch (error) {
-    status.textContent = error instanceof Error ? error.message : String(error);
+    sayError(error);
   } finally {
     setBusy(false);
   }
@@ -1998,7 +2257,7 @@ btnDiscard.addEventListener("click", () => {
   pendingTypes.clear();
   pendingParams.clear();
   render();
-  status.textContent = `Discarded ${plural(n, "change")}`;
+  say(`Discarded ${plural(n, "change")}`);
 });
 
 /** Apply queued type changes, grouped by type id. Applied entries leave the queue as they succeed. */
@@ -2063,9 +2322,9 @@ async function reloadSchedule(message: string, doneMessage?: string) {
     })) as ToolResult;
     lastArgs = scheduleArgs();
     parseSchedule(dataFromResult(result), textFromResult(result));
-    if (doneMessage) status.textContent = doneMessage;
+    if (doneMessage) say(doneMessage);
   } catch (error) {
-    status.textContent = error instanceof Error ? error.message : String(error);
+    sayError(error);
   } finally {
     setBusy(false);
   }
@@ -2088,7 +2347,7 @@ btnApply.addEventListener("click", async () => {
     // Keep what failed in the queue so the user can fix it and retry.
     setBusy(false);
     render();
-    status.textContent = `Applied ${types.count + params.count}, then Revit refused one: ${fail}`;
+    say(`Applied ${types.count + params.count}, then Revit refused one: ${fail}`, "error");
     return;
   }
   const applied = plural(types.count + params.count, "change");
@@ -2131,7 +2390,7 @@ function parseSchedule(data: ScheduleData | undefined, fallbackText?: string) {
       fallbackText?.startsWith("mcp_apps_get_schedule_data failed") ||
       fallbackText?.startsWith("get_schedule_data failed")
     ) {
-      status.textContent = fallbackText;
+      say(fallbackText, "error");
     }
     return;
   }
@@ -2154,7 +2413,7 @@ function parseSchedule(data: ScheduleData | undefined, fallbackText?: string) {
   refreshFilterOptions();
   refreshParamPicker();
   render();
-  if (data.message) status.textContent = data.message;
+  if (data.message) summary.textContent = data.message;
 }
 
 app.ontoolinput = (params) => {
