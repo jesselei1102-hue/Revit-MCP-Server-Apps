@@ -28,7 +28,6 @@ type ScheduleData = {
 type FilterState = {
   link: string;
   level: string;
-  category: string;
   family: string;
   type: string;
   search: string;
@@ -237,11 +236,12 @@ let themeOverride: Theme | null = readThemeOverride();
 const filters: FilterState = {
   link: "",
   level: "",
-  category: "",
   family: "",
   type: "",
   search: "",
 };
+/** Ticked category chips. Empty means every category. */
+const selectedCategories = new Set<string>();
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -508,15 +508,24 @@ function operateSucceeded(text: string): { ok: boolean; detail: string } {
 // Filters, category chips and the column picker
 // ---------------------------------------------------------------------------
 
+function categoryOf(row: Record<string, string>): string {
+  return (row.category ?? "").trim() || "(none)";
+}
+
+/** Names the ticked categories in the dock and status line; "" when none, or too many to read. */
+function categoryLabel(): string {
+  return selectedCategories.size <= 2 ? [...selectedCategories].join(" + ") : "";
+}
+
 function uniqueValues(key: string): string[] {
   const values = new Set<string>();
   for (const row of allRows) {
     if (key !== "link" && filters.link && (row.link ?? "") !== filters.link) continue;
     if (key !== "level" && filters.level && (row.level ?? "") !== filters.level) continue;
-    if (key !== "category" && filters.category && (row.category ?? "") !== filters.category) continue;
+    if (key !== "category" && selectedCategories.size && !selectedCategories.has(categoryOf(row))) continue;
     if (key !== "family" && filters.family && (row.family ?? "") !== filters.family) continue;
     if (key !== "type" && filters.type && (row.type ?? "") !== filters.type) continue;
-    const value = (row[key] ?? "").trim();
+    const value = key === "category" ? categoryOf(row) : (row[key] ?? "").trim();
     if (value) values.add(value);
   }
   return Array.from(values).sort((a, b) => a.localeCompare(b));
@@ -540,7 +549,10 @@ function refreshFilterOptions() {
   filters.link = fillSelect(filterLink, links, filters.link);
   pickLink.hidden = links.length === 0;
   filters.level = fillSelect(filterLevel, uniqueValues("level"), filters.level);
-  if (filters.category && !uniqueValues("category").includes(filters.category)) filters.category = "";
+  const categories = uniqueValues("category");
+  for (const name of Array.from(selectedCategories)) {
+    if (!categories.includes(name)) selectedCategories.delete(name);
+  }
   filters.family = fillSelect(filterFamily, uniqueValues("family"), filters.family);
   filters.type = fillSelect(filterType, uniqueValues("type"), filters.type);
 }
@@ -558,9 +570,13 @@ function searchTextOf(row: Record<string, string>): string {
 }
 
 function rowMatches(row: Record<string, string>, search: string): boolean {
+  if (selectedCategories.size && !selectedCategories.has(categoryOf(row))) return false;
+  return rowMatchesExceptCategory(row, search);
+}
+
+function rowMatchesExceptCategory(row: Record<string, string>, search: string): boolean {
   if (filters.link && (row.link ?? "") !== filters.link) return false;
   if (filters.level && (row.level ?? "") !== filters.level) return false;
-  if (filters.category && (row.category ?? "") !== filters.category) return false;
   if (filters.family && (row.family ?? "") !== filters.family) return false;
   if (filters.type && (row.type ?? "") !== filters.type) return false;
   return !search || searchTextOf(row).includes(search);
@@ -577,17 +593,14 @@ function filteredIds(): number[] {
 
 /** Rows matching every filter except category — the basis for category chip counts. */
 function rowsForCategoryChips(): Record<string, string>[] {
-  const category = filters.category;
-  filters.category = "";
-  const rows = filteredRows();
-  filters.category = category;
-  return rows;
+  const search = filters.search.trim().toLowerCase();
+  return allRows.filter((row) => rowMatchesExceptCategory(row, search));
 }
 
 function categoryCounts(rows: Record<string, string>[]): { name: string; count: number }[] {
   const map = new Map<string, number>();
   for (const row of rows) {
-    const name = (row.category ?? "").trim() || "(none)";
+    const name = categoryOf(row);
     map.set(name, (map.get(name) ?? 0) + 1);
   }
   return Array.from(map.entries())
@@ -598,17 +611,17 @@ function categoryCounts(rows: Record<string, string>[]): { name: string; count: 
 function renderChips() {
   const counts = categoryCounts(rowsForCategoryChips());
   let html = "";
-  if (counts.length > 1 || filters.category) {
+  if (counts.length > 1 || selectedCategories.size) {
     let shown = counts;
     let hidden = 0;
     if (!showAllCategories && counts.length > CATEGORY_CHIP_LIMIT) {
       shown = counts.slice(0, CATEGORY_CHIP_LIMIT);
-      const current = counts.find((item) => item.name === filters.category);
-      if (current && !shown.includes(current)) shown = [...shown, current];
+      // A ticked chip never hides behind "+N more".
+      shown = [...shown, ...counts.slice(CATEGORY_CHIP_LIMIT).filter((item) => selectedCategories.has(item.name))];
       hidden = counts.length - shown.length;
     }
     for (const item of shown) {
-      const on = filters.category === item.name;
+      const on = selectedCategories.has(item.name);
       html += `<button type="button" class="chip${on ? " on" : ""}" data-category="${escapeHtml(item.name)}" aria-pressed="${on}">${categoryGlyph(
         item.name
       )}${escapeHtml(item.name)} <span class="count">${item.count}</span></button>`;
@@ -633,7 +646,7 @@ chips.addEventListener("click", (event) => {
   }
   if (chip.dataset.category == null) return;
   const name = chip.dataset.category;
-  filters.category = filters.category === name ? "" : name;
+  if (!selectedCategories.delete(name)) selectedCategories.add(name);
   refreshFilterOptions();
   render();
 });
@@ -789,7 +802,7 @@ filterSearch.addEventListener("input", () => {
 btnClearFilters.addEventListener("click", () => {
   filters.link = "";
   filters.level = "";
-  filters.category = "";
+  selectedCategories.clear();
   filters.family = "";
   filters.type = "";
   filters.search = "";
@@ -1294,7 +1307,7 @@ function render() {
   const rows = filteredRows();
   viewRows = rows;
   renderChips();
-  btnClearFilters.hidden = !Object.values(filters).some((value) => value.trim());
+  btnClearFilters.hidden = !selectedCategories.size && !Object.values(filters).some((value) => value.trim());
 
   if (allRows.length === 0) {
     table.innerHTML = `<div class="empty"><b>No elements loaded</b><span>Ask the agent to load a schedule, or reload from Revit.</span></div>`;
@@ -1727,7 +1740,7 @@ function syncDock() {
 
   const ids = targetIds();
   const selectedInView = viewRows.filter((row) => checked.has(Number(row.elementId))).length;
-  const scope = filters.category || filters.type || filters.family || "";
+  const scope = categoryLabel() || filters.type || filters.family || "";
   // Names the set the Revit buttons act on: the checked rows, or else everything in view.
   selCount.textContent = selectedInView
     ? `${selectedInView} checked`
@@ -1913,7 +1926,7 @@ function hostTargets(rows: Record<string, string>[]): { ids: number[]; linkNames
 /** Category, type, level, family, or search is on. Link-only is not enough — that still means the whole link. */
 function narrowedFilters(): boolean {
   return Boolean(
-    filters.category || filters.level || filters.family || filters.type || filters.search.trim()
+    selectedCategories.size || filters.level || filters.family || filters.type || filters.search.trim()
   );
 }
 
@@ -2005,19 +2018,21 @@ if (open != null) open.ZoomToFit();
 return "reset";
 `;
 
-/** Collect and show or isolate one category inside Revit, so the id list never crosses the socket. */
+/** Collect and show or isolate whole categories inside Revit, so the id list never crosses the socket. */
 const CATEGORY_VIEW_CODE = `
 var uiDoc = new UIDocument(document);
 var view = uiDoc.ActiveView;
 if (view == null) throw new Exception("No active view");
-var bic = (BuiltInCategory)Enum.Parse(typeof(BuiltInCategory), (string)parameters[0]);
+var bics = new List<BuiltInCategory>();
+foreach (var s in ((string)parameters[0]).Split(','))
+    bics.Add((BuiltInCategory)Enum.Parse(typeof(BuiltInCategory), s));
 var mode = (string)parameters[1];
 var ids = new FilteredElementCollector(document)
-    .OfCategory(bic)
+    .WherePasses(new ElementMulticategoryFilter(bics))
     .WhereElementIsNotElementType()
     .ToElementIds()
     .ToList();
-if (ids.Count == 0) throw new Exception("No elements in that category");
+if (ids.Count == 0) throw new Exception("No elements in those categories");
 if (mode == "isolate") {
     using (var t = new Transaction(document, "Isolate category")) {
         t.Start();
@@ -2123,10 +2138,11 @@ async function callSendCode(code: string, parameters: string[]): Promise<string>
   return text;
 }
 
-async function showCategoryInRevit(mode: ShowMode, ost: string, category: string, skippedLinks: number) {
+async function showCategoriesInRevit(mode: ShowMode, osts: string[], skippedLinks: number) {
+  const category = categoryLabel() || `${selectedCategories.size} categories`;
   setBusy(true, `${mode === "isolate" ? "Isolating" : "Selecting"} ${category}…`);
   try {
-    await callSendCode(CATEGORY_VIEW_CODE, [ost, mode === "isolate" ? "isolate" : "select"]);
+    await callSendCode(CATEGORY_VIEW_CODE, [osts.join(","), mode === "isolate" ? "isolate" : "select"]);
     const base = mode === "isolate" ? `Isolated ${category}` : `Selected and zoomed ${category}`;
     say(
       skippedLinks
@@ -2212,7 +2228,8 @@ async function hideLinkedModels(): Promise<number> {
 }
 
 function hostActionLabel(mode: ShowMode, count: number, skippedLinks: number): string {
-  const what = filters.category ? `${count} ${filters.category}` : plural(count, "element");
+  const label = categoryLabel();
+  const what = label ? `${count} ${label}` : plural(count, "element");
   const base = mode === "isolate" ? `Isolated ${what}` : `Selected and zoomed ${what}`;
   if (!skippedLinks) return base;
   return `${base}. ${plural(skippedLinks, "linked row")} skipped — Revit cannot show elements inside a link one by one.`;
@@ -2292,19 +2309,19 @@ async function showInRevit(mode: ShowMode) {
 
   const hostIds = hostElementIds(rows);
   const skippedLinks = rows.filter((row) => !isHostRow(row)).length;
-  // Category chip alone (Walls, Doors, …) with no row checks. Collecting those ids in
+  // Category chips alone (Walls, Doors, …) with no row checks. Collecting those ids in
   // Revit avoids the 8192-byte socket read, which rejects a full wall list as invalid JSON.
-  const categoryOst =
+  const categoryOsts =
     checkedCount === 0 &&
-    filters.category &&
+    selectedCategories.size &&
     !filters.level &&
     !filters.family &&
     !filters.type &&
     !filters.search.trim()
-      ? ostForCategory(filters.category)
-      : undefined;
-  if (categoryOst && hostIds.length > 0) {
-    await showCategoryInRevit(mode, categoryOst, filters.category, skippedLinks);
+      ? [...selectedCategories].map(ostForCategory)
+      : [];
+  if (categoryOsts.length > 0 && categoryOsts.every(Boolean) && hostIds.length > 0) {
+    await showCategoriesInRevit(mode, categoryOsts as string[], skippedLinks);
     return;
   }
   // A category/type/level/family/search, or checked rows, means those host elements.
@@ -2640,6 +2657,7 @@ function cappedList<T>(items: T[], format: (item: T) => string): string[] {
 
 function buildModelContext(): string {
   const activeFilters = Object.entries(filters).filter(([, value]) => value.trim());
+  if (selectedCategories.size) activeFilters.push(["category", [...selectedCategories].join(", ")]);
   const paramCols = availableParamColumns.filter((c) => selectedParamColumns.has(c));
   const checkedIds = Array.from(checked);
   const lines = [
