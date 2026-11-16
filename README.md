@@ -106,7 +106,7 @@ You need **Node.js 20+**, **Revit 2020–2027**, and an MCP client that can show
 ### 1. Revit add-in
 
 1. Close Revit.
-2. From the [latest release](https://github.com/jesselei1102-hue/Revit-MCP-Server-Apps/releases/latest), download the zip for your Revit year. The name looks like `mcp-servers-for-revit-v1.0.0-Revit2026.zip`.
+2. From the [latest release](https://github.com/jesselei1102-hue/Revit-MCP-Server-Apps/releases/latest), download the zip for your Revit year. The name looks like `mcp-servers-for-revit-v1.1.0-Revit2026.zip`.
 3. Unzip it into that year's Addins folder:
 
 ```
