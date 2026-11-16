@@ -4,7 +4,7 @@
 
 Based on [mcp-servers-for-revit](https://github.com/mcp-servers-for-revit/mcp-servers-for-revit).
 
-This fork keeps the original Revit MCP bridge (server + plugin + command set) and adds **MCP Apps UI**, **model checks**, **Revit 2027** support, and tools for querying, navigating, and editing the model from Cursor / other MCP clients.
+This fork keeps the original Revit MCP bridge (server + plugin + command set) and adds **MCP Apps UI**, **model checks**, **MEP tools** (pipes, ducts, cable trays, fittings), **Revit 2027** support, and tools for querying, navigating, and editing the model from Cursor / other MCP clients.
 
 The Schedule App is a **HITL (human-in-the-loop) workflow**: the AI opens and loads model data; **you** review, filter, edit, run checks, and confirm before writes go back to Revit.
 
@@ -70,32 +70,107 @@ Rule engine lives in the Node MCP server (`server/src/checks/`):
 
 Chat-facing tool results stay **summary-sized**; the App dashboard loads full detail via structured content.
 
+### MEP (pipes, ducts, cable trays)
+
+Dedicated command set (`mep-commandset`) plus MCP tools for listing types/systems/instances, creating and modifying straight runs, and placing fittings. Lengths and sizes are **millimeters**. Prefer these over `send_code_to_revit` for MEP work. Needs the **v1.1.0+** release zip (includes `RevitMCPMEPCommandSet`).
+
 ### Revit 2020–2027
 
-- Plugin + command set configs for **R20–R27** (including Revit 2027)
+- Plugin + command sets for **R20–R27** (architecture command set + MEP command set)
 - Debug deploy under `%AppData%\Autodesk\Revit\Addins\<year>\...`
 
-### New / extended tools
+## MCP tools
+
+Prefer dedicated tools before `send_code_to_revit`. Coordinates and sizes are millimeters unless noted.
+
+### Query & inspect
 
 | Tool | Description |
 | ---- | ----------- |
-| `mcp_apps_get_schedule_data` | MCP Apps schedule UI (Elements / Checks) |
+| `query_model` | Multi-criteria element query → Ids + analysis counts |
+| `get_element_data` | Element info / parameters (incl. `EditableInstanceParameters`) |
+| `ai_element_filter` | Category / type / visibility / spatial filter for AI follow-up |
+| `get_current_view_info` | Active view type, name, scale, etc. |
+| `get_current_view_elements` | Elements in the active view (model or annotation) |
+| `get_selected_elements` | Current selection |
+| `get_available_family_types` | Loaded family types (filter by category / name) |
+| `analyze_model_statistics` | Element / type / family / view / sheet counts |
+| `get_material_quantities` | Material takeoff (area, volume, counts) |
+| `export_room_data` | Room schedule-style export |
+| `get_running_revit_instances` | Running Revit processes / open documents |
+
+### Navigate & views
+
+| Tool | Description |
+| ---- | ----------- |
+| `select_elements` | Select by Id |
+| `zoom_to_elements` | Zoom / focus the view on Ids |
+| `open_view` | Open a view by Id |
+| `export_views` | Export views / sheets to image, PDF, or schedule CSV |
+| `color_elements` | Color by category + parameter value in the current view |
+
+### Create
+
+| Tool | Description |
+| ---- | ----------- |
+| `create_grid` | Grid system (X/Y, alphabetic or numeric) |
+| `create_level` | Levels at elevations |
+| `create_room` | Place rooms |
+| `create_point_based_element` | Doors, windows, furniture, … |
+| `create_line_based_element` | Walls, beams, … |
+| `create_surface_based_element` | Floors, ceilings, roofs |
+| `create_structural_framing_system` | Beam system in a rectangular boundary |
+| `create_dimensions` | Dimension annotations |
+
+### Edit & operate
+
+| Tool | Description |
+| ---- | ----------- |
+| `operate_element` | Select / Hide / Delete / SetColor / Highlight / Isolate / ResetOverride / ChangeType / SetParameter |
+| `delete_element` | Delete by Id |
+| `tag_all_rooms` | Tag all rooms in the active view |
+| `tag_all_walls` | Tag all walls in the active view |
+
+### MEP — pipes, ducts, cable trays
+
+| Tool | Description |
+| ---- | ----------- |
+| `get_pipe_types` / `get_duct_types` / `get_cable_tray_types` | List loaded types |
+| `get_pipe_system_types` / `get_duct_system_types` | List system types (for `systemTypeId`) |
+| `get_pipes` / `get_ducts` / `get_cable_trays` | List instances (mm) |
+| `create_pipe` / `create_duct` / `create_cable_tray` | Straight run between two points |
+| `modify_pipe` / `modify_duct` / `modify_cable_tray` | Move ends, change type or size |
+| `create_mep_fitting` | Generic elbow / transition / union / tee / takeoff (`class`: pipe \| duct \| cable_tray) |
+| `create_pipe_*_fitting` | Pipe elbow, transition, union, tee, cross, takeoff |
+| `create_duct_*_fitting` | Duct elbow, transition, union, tee, cross, takeoff |
+| `create_elbow_fitting` / `create_transition_fitting` / `create_union_fitting` / `create_tee_fitting` / `create_cross_fitting` | Cable tray fittings |
+
+### Model checks
+
+| Tool | Description |
+| ---- | ----------- |
 | `rules_import_checkset` | Import a Model Checker `.xml` checkset |
-| `rules_upsert` | Create or update custom rules (e.g. from natural language) |
+| `rules_upsert` | Create or update custom rules |
 | `rules_list` | List rulesets / rules |
 | `rules_set_enabled` | Enable or disable rules |
-| `checks_run` | Run enabled rules against the open host model |
+| `checks_run` | Run enabled rules on the open host model |
 | `checks_get_results` | Latest (or specific) run summary + trend |
-| `query_model` | Multi-criteria element query |
-| `get_element_data` | Element info + parameter modes including `EditableInstanceParameters` |
-| `select_elements` | Select elements by Id |
-| `zoom_to_elements` | Zoom to elements |
-| `open_view` | Open a view by Id |
-| `export_views` | Export views |
-| `get_running_revit_instances` | List running Revit processes / open documents |
-| `operate_element` | Extended with `ChangeType` and `SetParameter` |
 
-Existing upstream tools (create / tag / color / room export / etc.) remain available.
+### MCP Apps & storage
+
+| Tool | Description |
+| ---- | ----------- |
+| `mcp_apps_get_schedule_data` | Schedule UI (Elements / Checks) |
+| `store_project_data` | Persist project metadata in local SQLite |
+| `store_room_data` | Persist room metadata for a project |
+| `query_stored_data` | Query the local store |
+| `say_hello` | Connection smoke test dialog in Revit |
+
+### Escape hatch
+
+| Tool | Description |
+| ---- | ----------- |
+| `send_code_to_revit` | **Last resort** — C# when no dedicated tool covers the API |
 
 ## Install
 
@@ -155,6 +230,7 @@ Skip this if you installed the release zip. Debug builds copy the add-in into `%
 
 ```bash
 dotnet build commandset/RevitMCPCommandSet.csproj -c "Debug R26"
+dotnet build mep-commandset/RevitMCPMEPCommandSet.csproj -c "Debug R26"
 dotnet build plugin/RevitMCPPlugin.csproj -c "Debug R26"
 ```
 
@@ -163,11 +239,12 @@ dotnet build plugin/RevitMCPPlugin.csproj -c "Debug R26"
 ```
 ├── server/                 # MCP server + MCP Apps
 │   ├── mcp-app/            # Schedule app UI (HTML/TS)
+│   ├── src/tools/          # MCP tools (incl. mep.ts)
 │   ├── src/mcpApp.ts       # App tool + UI resource
 │   └── src/checks/         # Rules, collector, engine, store, MCP tools
 ├── plugin/                 # Revit add-in (socket bridge, MCP toggle)
-├── commandset/             # Revit API commands
-├── command.json
+├── commandset/             # Core Revit API commands
+├── mep-commandset/         # MEP pipes / ducts / cable trays / fittings
 ├── BACKLOG.md              # Parked ideas
 └── LICENSE
 ```
