@@ -44,8 +44,8 @@ namespace revit_mcp_plugin.Core
             panelData.ToolTip = "Show or hide the Agent Canvas panel.";
             panelData.LongDescription = "Dockable WebView2 canvas used by the agent to render 3D scenes and rich content inside Revit.";
             panelData.AvailabilityClassName = Availability;
-            panelData.Image = new BitmapImage(new Uri(resourcePrefix + ";component/Core/Ressources/icon-16.png", UriKind.RelativeOrAbsolute));
-            panelData.LargeImage = new BitmapImage(new Uri(resourcePrefix + ";component/Core/Ressources/icon-32.png", UriKind.RelativeOrAbsolute));
+            panelData.Image = new BitmapImage(new Uri(resourcePrefix + ";component/Core/Ressources/panel-16.png", UriKind.RelativeOrAbsolute));
+            panelData.LargeImage = new BitmapImage(new Uri(resourcePrefix + ";component/Core/Ressources/panel-32.png", UriKind.RelativeOrAbsolute));
             mcpPanel.AddItem(panelData);
 
             PushButtonData settingsData = new PushButtonData(
