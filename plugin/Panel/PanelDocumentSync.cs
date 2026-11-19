@@ -219,7 +219,10 @@ namespace revit_mcp_plugin.Panel
                 PanelGeometrySummary delta = null;
                 if (upsertElements.Count > 0)
                 {
-                    PanelMeshResult extraction = PanelMeshExtractor.Extract(doc, upsertElements);
+                    PanelMeshResult extraction = PanelMeshExtractor.Extract(doc, upsertElements, new PanelMeshExtractor.ExtractOptions
+                    {
+                        View = doc.ActiveView,
+                    });
                     if (extraction.Elements.Count > 0)
                         delta = PanelMeshPayloadWriter.WriteDelta(PanelService.Instance.PanelTmpFolder, extraction);
                 }

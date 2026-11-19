@@ -8,7 +8,7 @@ namespace revit_mcp_plugin.Panel
     /// <summary>
     /// User-triggered load: extract the active Revit view's model geometry into the Agent Canvas.
     /// Raised from the panel HUD button (no MCP round-trip).
-    /// Uses SkipLinks + a short time budget so the Revit UI cannot hang indefinitely.
+    /// Uses the same extract coverage as the agent; a time budget still protects the UI.
     /// </summary>
     internal sealed class LoadGeometryExternalEvent : IExternalEventHandler
     {
@@ -113,11 +113,12 @@ namespace revit_mcp_plugin.Panel
                 PanelBridge.PostToJs("load_geometry_progress", new { message = "extracting…" });
 
                 IList<Element> targets = PanelMeshExtractor.ResolveTargets(doc, view, null);
-                // HUD path: skip links + 15s cap so one bad element cannot freeze Revit.
+                // Same coverage as agent panel_show_geometry; Options.View clips to section/scope box.
                 var extractOptions = new PanelMeshExtractor.ExtractOptions
                 {
-                    SkipLinks = true,
-                    MaxElapsedMs = 15_000,
+                    SkipLinks = false,
+                    MaxElapsedMs = PanelMeshExtractor.DefaultMaxElapsedMs,
+                    View = view,
                 };
                 PanelMeshResult extraction = PanelMeshExtractor.Extract(doc, targets, extractOptions);
                 PanelBridge.SetActiveDocument(doc);
@@ -129,7 +130,7 @@ namespace revit_mcp_plugin.Panel
                     {
                         ok = false,
                         error = "no_geometry",
-                        message = "No extractable geometry in the active view (links are skipped for Load Revit view).",
+                        message = "No extractable geometry in the active view.",
                         viewName = view.Name,
                         skippedElements = extraction.SkippedElements,
                         truncated = extraction.Truncated,
@@ -151,7 +152,6 @@ namespace revit_mcp_plugin.Panel
                     totalVertices = summary.TotalVertices,
                     truncated = summary.Truncated,
                     skippedElements = summary.SkippedElements,
-                    skippedLinks = true,
                 });
 
                 PanelService.Instance.WritePanelLog(

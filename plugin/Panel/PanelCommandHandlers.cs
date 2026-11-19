@@ -55,12 +55,16 @@ namespace revit_mcp_plugin.Panel
                     }
                 }
 
+                View view = doc.ActiveView;
                 IList<Element> targets = PanelMeshExtractor.ResolveTargets(
                     doc,
-                    doc.ActiveView,
+                    view,
                     ids.Count > 0 ? ids : null);
 
-                PanelMeshResult extraction = PanelMeshExtractor.Extract(doc, targets);
+                PanelMeshResult extraction = PanelMeshExtractor.Extract(doc, targets, new PanelMeshExtractor.ExtractOptions
+                {
+                    View = view,
+                });
                 PanelBridge.SetActiveDocument(doc);
 
                 if (extraction.Elements.Count == 0)
@@ -86,6 +90,14 @@ namespace revit_mcp_plugin.Panel
                 PanelBridge.ClearError();
                 PanelBridge.PostGeometryReady(summary);
 
+                bool sectionBoxActive = false;
+                try
+                {
+                    if (view is View3D v3d)
+                        sectionBoxActive = v3d.IsSectionBoxActive;
+                }
+                catch (Exception) { sectionBoxActive = false; }
+
                 Result = new
                 {
                     ok = true,
@@ -94,6 +106,8 @@ namespace revit_mcp_plugin.Panel
                     totalIndices = summary.TotalIndices,
                     truncated = summary.Truncated,
                     skippedElements = summary.SkippedElements,
+                    viewName = view?.Name,
+                    sectionBoxActive,
                 };
             }
             catch (Exception ex)

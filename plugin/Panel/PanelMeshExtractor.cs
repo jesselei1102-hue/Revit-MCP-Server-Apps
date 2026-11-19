@@ -32,7 +32,23 @@ namespace revit_mcp_plugin.Panel
             public int MaxElapsedMs { get; set; } = DefaultMaxElapsedMs;
             /// <summary>Skip RevitLinkInstance containers (faster HUD loads; links often dominate time).</summary>
             public bool SkipLinks { get; set; }
+            /// <summary>Optional tighter per-element vertex cap for quick loads. 0 = MaxVerticesPerElement.</summary>
+            public int MaxVerticesPerElementOverride { get; set; }
+            /// <summary>
+            /// When set (especially a View3D with an active section / scope box), geometry Options.View
+            /// is bound to it so Revit returns view-clipped meshes matching what you see in that view.
+            /// </summary>
+            public View View { get; set; }
         }
+
+        /// <summary>
+        /// Cap faces triangulated per element after we decide to keep full solids.
+        /// </summary>
+        public const int MaxFacesPerElement = 120;
+        /// <summary>If a quick geometry walk estimates more faces than this, emit a bbox proxy instead.</summary>
+        public const int SimplifyFaceEstimateThreshold = 80;
+        /// <summary>Nested GeometryInstance count that triggers bbox proxy for FamilyInstance.</summary>
+        public const int SimplifyInstanceThreshold = 12;
 
         /// <summary>
         /// Category/name heuristic only — never call get_Geometry here.
@@ -128,8 +144,22 @@ namespace revit_mcp_plugin.Panel
                 ComputeReferences = false,
             };
 
+            View view = extractOptions.View;
+            bool sectionBoxActive = false;
+            if (view != null)
+            {
+                try { options.View = view; }
+                catch (Exception) { /* keep view-independent options */ }
+
+                if (view is View3D view3d)
+                {
+                    try { sectionBoxActive = view3d.IsSectionBoxActive; }
+                    catch (Exception) { sectionBoxActive = false; }
+                }
+            }
+
             PanelService.Instance.WritePanelLog(
-                $"Extract start count={elements?.Count ?? 0} skipLinks={extractOptions.SkipLinks} maxMs={maxElapsedMs}");
+                $"Extract start count={elements?.Count ?? 0} skipLinks={extractOptions.SkipLinks} maxMs={maxElapsedMs} view={view?.Name ?? "(none)"} sectionBox={sectionBoxActive}");
 
             int index = 0;
             foreach (Element element in elements)
@@ -359,7 +389,28 @@ namespace revit_mcp_plugin.Panel
                     return;
                 }
 
-                EmitGeometryElement(geometry, transform ?? Transform.Identity, 0, result, info);
+                // Active simplify: keep the element (pickable) but replace insane meshes with a bbox proxy.
+                // Example: Generic Model 639100 = "_Rigged+6700_...Robot+++Faceplate" — tiny bbox, huge nest.
+                string simplifyReason = null;
+                if (ShouldSimplifyToProxy(element, geometry, out simplifyReason))
+                {
+                    if (EmitBoundingBoxProxy(element, transform ?? Transform.Identity, result, info))
+                    {
+                        info.Simplified = true;
+                        result.Truncated = true;
+                        PanelService.Instance.WritePanelLog(
+                            $"Extract simplified id={elementId} cat={categoryName} reason={simplifyReason} proxy=bbox");
+                    }
+                    else
+                    {
+                        result.SkippedElements++;
+                        return;
+                    }
+                }
+                else
+                {
+                    EmitGeometryElement(geometry, transform ?? Transform.Identity, 0, result, info);
+                }
 
                 info.VertexCount = (int)(result.TotalVertices - baseVertex);
                 info.IndexCount = (int)(result.TotalIndices - baseIndex);
@@ -383,6 +434,151 @@ namespace revit_mcp_plugin.Panel
                 result.Indices.RemoveRange((int)baseIndex, (int)(result.TotalIndices - baseIndex));
                 result.SkippedElements++;
             }
+        }
+
+        private static bool ShouldSimplifyToProxy(Element element, GeometryElement geometry, out string reason)
+        {
+            reason = null;
+            string familyHint = null;
+            try
+            {
+                if (element is FamilyInstance fi)
+                    familyHint = fi.Symbol?.Family?.Name ?? fi.Symbol?.Name;
+            }
+            catch (Exception) { familyHint = null; }
+
+            if (!string.IsNullOrEmpty(familyHint))
+            {
+                if (familyHint.IndexOf("Rigged", StringComparison.OrdinalIgnoreCase) >= 0
+                    || familyHint.IndexOf("Robot", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    reason = "family_hint:" + familyHint;
+                    return true;
+                }
+            }
+
+            EstimateGeometryCost(geometry, 0, out int faces, out int instances);
+            if (faces >= SimplifyFaceEstimateThreshold)
+            {
+                reason = $"faces~{faces}";
+                return true;
+            }
+
+            if (instances >= SimplifyInstanceThreshold)
+            {
+                reason = $"instances={instances}";
+                return true;
+            }
+
+            return false;
+        }
+
+        private static void EstimateGeometryCost(GeometryElement geometry, int depth, out int faces, out int instances)
+        {
+            faces = 0;
+            instances = 0;
+            if (geometry == null || depth > 4)
+                return;
+
+            foreach (GeometryObject obj in geometry)
+            {
+                if (obj is GeometryInstance instance)
+                {
+                    instances++;
+                    try
+                    {
+                        EstimateGeometryCost(instance.GetSymbolGeometry(), depth + 1, out int childFaces, out int childInstances);
+                        faces += childFaces;
+                        instances += childInstances;
+                    }
+                    catch (Exception) { /* ignore */ }
+
+                    if (faces >= SimplifyFaceEstimateThreshold || instances >= SimplifyInstanceThreshold)
+                        return;
+                    continue;
+                }
+
+                if (obj is Solid solid)
+                {
+                    try
+                    {
+                        if (solid.Volume > 0)
+                            faces += solid.Faces?.Size ?? 0;
+                    }
+                    catch (Exception) { /* ignore */ }
+                    if (faces >= SimplifyFaceEstimateThreshold)
+                        return;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 12-triangle axis-aligned box in place of a high-poly family. Still pickable via ElementId.
+        /// </summary>
+        private static bool EmitBoundingBoxProxy(
+            Element element,
+            Transform transform,
+            PanelMeshResult result,
+            PanelMeshElementInfo marker)
+        {
+            BoundingBoxXYZ bbox = null;
+            try { bbox = element.get_BoundingBox(null); }
+            catch (Exception) { bbox = null; }
+
+            if (bbox == null || bbox.Min == null || bbox.Max == null)
+                return false;
+
+            XYZ min = bbox.Min;
+            XYZ max = bbox.Max;
+            // Apply element bbox transform if present, then the emit transform.
+            Transform boxXf = bbox.Transform ?? Transform.Identity;
+            Transform combined = transform ?? Transform.Identity;
+            if (boxXf != null && !boxXf.IsIdentity)
+                combined = combined.Multiply(boxXf);
+
+            int baseVertex = (int)result.TotalVertices;
+            XYZ[] corners =
+            {
+                new XYZ(min.X, min.Y, min.Z),
+                new XYZ(max.X, min.Y, min.Z),
+                new XYZ(max.X, max.Y, min.Z),
+                new XYZ(min.X, max.Y, min.Z),
+                new XYZ(min.X, min.Y, max.Z),
+                new XYZ(max.X, min.Y, max.Z),
+                new XYZ(max.X, max.Y, max.Z),
+                new XYZ(min.X, max.Y, max.Z),
+            };
+
+            foreach (XYZ p in corners)
+            {
+                XYZ w = combined.OfPoint(p);
+                result.Positions.Add((float)w.X);
+                result.Positions.Add((float)w.Y);
+                result.Positions.Add((float)w.Z);
+            }
+
+            // 6 faces × 2 tris; indices relative to this element's first vertex.
+            int[,] tris =
+            {
+                { 0, 1, 2 }, { 0, 2, 3 }, // bottom
+                { 4, 6, 5 }, { 4, 7, 6 }, // top
+                { 0, 4, 5 }, { 0, 5, 1 }, // y-
+                { 1, 5, 6 }, { 1, 6, 2 }, // x+
+                { 2, 6, 7 }, { 2, 7, 3 }, // y+
+                { 3, 7, 4 }, { 3, 4, 0 }, // x-
+            };
+
+            for (int t = 0; t < tris.GetLength(0); t++)
+            {
+                result.Indices.Add((uint)(baseVertex + tris[t, 0]));
+                result.Indices.Add((uint)(baseVertex + tris[t, 1]));
+                result.Indices.Add((uint)(baseVertex + tris[t, 2]));
+            }
+
+            marker.VertexCount = 8;
+            marker.IndexCount = 36;
+            marker.FacesEmitted = 6;
+            return true;
         }
 
         private static void EmitGeometryElement(
@@ -436,15 +632,25 @@ namespace revit_mcp_plugin.Panel
         {
             foreach (Face face in solid.Faces)
             {
+                if (marker.FacesEmitted >= MaxFacesPerElement)
+                {
+                    result.Truncated = true;
+                    return;
+                }
+
                 if (result.TotalVertices >= MaxVerticesPerBatch)
                 {
                     result.Truncated = true;
                     return;
                 }
 
+                // 0 = coarsest preview mesh suitable for Agent Canvas.
                 Mesh mesh = null;
-                try { mesh = face.Triangulate(0.05); }
+                try { mesh = face.Triangulate(0); }
                 catch (Exception) { /* skip this face */ }
+
+                if (mesh != null)
+                    marker.FacesEmitted++;
 
                 EmitMesh(mesh, parent, result, marker, elementBudgetOverride);
             }

@@ -11,6 +11,8 @@ namespace revit_mcp_plugin.Panel
         public string Name { get; set; }
         public string Category { get; set; }
         public bool IsGlazed { get; set; }
+        /// <summary>True when this element used a simplified proxy mesh (e.g. bbox) instead of full solids.</summary>
+        public bool Simplified { get; set; }
 
         /// <summary>Vertex offset (in vertices, not floats) into Positions.</summary>
         public int FirstVertex { get; set; }
@@ -23,6 +25,9 @@ namespace revit_mcp_plugin.Panel
 
         /// <summary>Number of indices belonging to this element.</summary>
         public int IndexCount { get; set; }
+
+        /// <summary>Faces successfully triangulated for this element (runtime extract budget).</summary>
+        public int FacesEmitted { get; set; }
     }
 
     /// <summary>

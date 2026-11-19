@@ -75,7 +75,8 @@ namespace revit_mcp_plugin.Panel
             bool selectedOnly = parameters?["selectedOnly"]?.Value<bool>() ?? false;
 
             HandlerInstance.SetParameters(ids, selectedOnly);
-            if (!RaiseAndWaitForCompletion(60000))
+            // Extract can spend tens of seconds on high-poly families; keep above DefaultMaxElapsedMs.
+            if (!RaiseAndWaitForCompletion(90000))
                 throw CreateTimeoutException(CommandName);
 
             return HandlerInstance.Result;
