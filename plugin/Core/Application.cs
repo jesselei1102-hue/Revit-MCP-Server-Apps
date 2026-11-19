@@ -61,6 +61,9 @@ namespace revit_mcp_plugin.Core
 
             PanelService.Instance.Register(application, PanelTitle);
             PanelDocumentSync.Initialize(application);
+            // HUD "Load Revit view" / pick must work even before MCP is toggled On.
+            PickExternalEvent.Register();
+            LoadGeometryExternalEvent.Register(application);
 
             return Result.Succeeded;
         }

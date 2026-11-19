@@ -8,6 +8,7 @@ namespace revit_mcp_plugin.Panel
     /// <summary>
     /// User-triggered load: extract the active Revit view's model geometry into the Agent Canvas.
     /// Raised from the panel HUD button (no MCP round-trip).
+    /// Uses SkipLinks + a short time budget so the Revit UI cannot hang indefinitely.
     /// </summary>
     internal sealed class LoadGeometryExternalEvent : IExternalEventHandler
     {
@@ -15,13 +16,21 @@ namespace revit_mcp_plugin.Panel
         private static ExternalEvent _event;
         private static readonly object Sync = new();
         private static bool _pending;
+        private static bool _busy;
+        private static UIControlledApplication _uiControlled;
 
         private LoadGeometryExternalEvent() { }
 
-        public static void Register()
+        public static void Register(UIControlledApplication application = null)
         {
             lock (Sync)
             {
+                if (application != null && _uiControlled == null)
+                {
+                    _uiControlled = application;
+                    _uiControlled.Idling += OnIdling;
+                }
+
                 _event ??= ExternalEvent.Create(Handler);
             }
         }
@@ -30,6 +39,17 @@ namespace revit_mcp_plugin.Panel
         {
             lock (Sync)
             {
+                if (_busy)
+                {
+                    PanelBridge.PostToJs("load_geometry_result", new
+                    {
+                        ok = false,
+                        error = "load_busy",
+                        message = "A Load Revit view is already running. Wait for it to finish.",
+                    });
+                    return;
+                }
+
                 _pending = true;
             }
 
@@ -40,25 +60,47 @@ namespace revit_mcp_plugin.Panel
                 {
                     ok = false,
                     error = "load_geometry_event_not_registered",
-                    message = "Panel load event was not registered. Toggle MCP Off/On and retry.",
+                    message = "Panel load event was not registered. Restart Revit and retry.",
                 });
                 return;
             }
 
-            _event.Raise();
+            // Prefer Idling so we leave the WebView message callback before doing heavy work.
+            // Raise() is also called as a fallback if Idling is unavailable.
+            try { _event.Raise(); }
+            catch (Exception ex)
+            {
+                PanelService.Instance.WritePanelLog("load_geometry_raise_failed: " + ex.Message);
+            }
+        }
+
+        private static void OnIdling(object sender, Autodesk.Revit.UI.Events.IdlingEventArgs e)
+        {
+            bool needRaise;
+            lock (Sync)
+            {
+                needRaise = _pending && !_busy;
+            }
+
+            if (!needRaise || _event == null)
+                return;
+
+            try { _event.Raise(); }
+            catch (Exception ex)
+            {
+                PanelService.Instance.WritePanelLog("load_geometry_idling_raise_failed: " + ex.Message);
+            }
         }
 
         public void Execute(UIApplication app)
         {
-            bool run;
             lock (Sync)
             {
-                run = _pending;
+                if (!_pending || _busy)
+                    return;
                 _pending = false;
+                _busy = true;
             }
-
-            if (!run)
-                return;
 
             try
             {
@@ -71,7 +113,13 @@ namespace revit_mcp_plugin.Panel
                 PanelBridge.PostToJs("load_geometry_progress", new { message = "extracting…" });
 
                 IList<Element> targets = PanelMeshExtractor.ResolveTargets(doc, view, null);
-                PanelMeshResult extraction = PanelMeshExtractor.Extract(doc, targets);
+                // HUD path: skip links + 15s cap so one bad element cannot freeze Revit.
+                var extractOptions = new PanelMeshExtractor.ExtractOptions
+                {
+                    SkipLinks = true,
+                    MaxElapsedMs = 15_000,
+                };
+                PanelMeshResult extraction = PanelMeshExtractor.Extract(doc, targets, extractOptions);
                 PanelBridge.SetActiveDocument(doc);
 
                 if (extraction.Elements.Count == 0)
@@ -81,9 +129,10 @@ namespace revit_mcp_plugin.Panel
                     {
                         ok = false,
                         error = "no_geometry",
-                        message = "No extractable geometry in the active view.",
+                        message = "No extractable geometry in the active view (links are skipped for Load Revit view).",
                         viewName = view.Name,
                         skippedElements = extraction.SkippedElements,
+                        truncated = extraction.Truncated,
                     });
                     return;
                 }
@@ -102,10 +151,11 @@ namespace revit_mcp_plugin.Panel
                     totalVertices = summary.TotalVertices,
                     truncated = summary.Truncated,
                     skippedElements = summary.SkippedElements,
+                    skippedLinks = true,
                 });
 
                 PanelService.Instance.WritePanelLog(
-                    $"panel_user_load_geometry view={view.Name} elements={summary.ElementCount} verts={summary.TotalVertices}");
+                    $"panel_user_load_geometry view={view.Name} elements={summary.ElementCount} verts={summary.TotalVertices} truncated={summary.Truncated}");
             }
             catch (Exception ex)
             {
@@ -117,6 +167,13 @@ namespace revit_mcp_plugin.Panel
                     message = ex.Message,
                 });
                 PanelService.Instance.WritePanelLog("panel_user_load_geometry_failed: " + ex.Message);
+            }
+            finally
+            {
+                lock (Sync)
+                {
+                    _busy = false;
+                }
             }
         }
 

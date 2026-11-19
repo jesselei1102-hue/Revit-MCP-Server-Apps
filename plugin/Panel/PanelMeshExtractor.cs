@@ -23,74 +23,35 @@ namespace revit_mcp_plugin.Panel
         // Morning's fast full-model loads finished with truncated:true under ~100k/link.
         public const int MaxVerticesPerLink = 100_000;
         private const int MaxDepth = 8;
+        /// <summary>Default hard stop so a single bad element cannot freeze the Revit UI forever.</summary>
+        public const int DefaultMaxElapsedMs = 45_000;
+
+        public sealed class ExtractOptions
+        {
+            /// <summary>Abort the batch after this many ms (checked between elements). 0 = DefaultMaxElapsedMs.</summary>
+            public int MaxElapsedMs { get; set; } = DefaultMaxElapsedMs;
+            /// <summary>Skip RevitLinkInstance containers (faster HUD loads; links often dominate time).</summary>
+            public bool SkipLinks { get; set; }
+        }
 
         /// <summary>
-        /// Heuristic: element has at least one face whose material is (a) class "Glass" or
-        /// (b) name contains "glass"/"glaz", or (c) Transparency >= 50.
-        /// Same path that finished Snowdon in ~2–3s this morning.
+        /// Category/name heuristic only — never call get_Geometry here.
+        /// A second get_Geometry + face walk was hanging the UI on some elements during Load Revit view.
         /// </summary>
         private static bool IsLikelyGlazedElement(Element element)
         {
-            if (element == null) return false;
-            Document doc = element.Document;
-            if (doc == null) return false;
-
-            var materialIds = new HashSet<ElementId>();
-            try
-            {
-                Options options = new Options { DetailLevel = ViewDetailLevel.Coarse, IncludeNonVisibleObjects = false, ComputeReferences = false };
-                GeometryElement geometry = null;
-                try { geometry = element.get_Geometry(options); } catch (Exception) { geometry = null; }
-                if (geometry != null) CollectFaceMaterialIds(geometry, 0, materialIds);
-            }
-            catch (Exception) { /* fall through */ }
-
-            if (materialIds.Count == 0)
+            if (element == null)
                 return false;
 
-            foreach (ElementId id in materialIds)
-            {
-                if (id == null || id == ElementId.InvalidElementId) continue;
-                Material material = doc.GetElement(id) as Material;
-                if (material == null) continue;
-                string cls = (material.MaterialClass ?? string.Empty).Trim();
-                string cat = (material.MaterialCategory ?? string.Empty).Trim();
-                string name = (material.Name ?? string.Empty).Trim();
-                int transparency = material.Transparency;
-
-                if (string.Equals(cls, "Glass", StringComparison.OrdinalIgnoreCase)) return true;
-                if (string.Equals(cat, "Glass", StringComparison.OrdinalIgnoreCase)) return true;
-                if (name.IndexOf("glass", StringComparison.OrdinalIgnoreCase) >= 0) return true;
-                if (name.IndexOf("glaz", StringComparison.OrdinalIgnoreCase) >= 0) return true;
-                if (transparency >= 50) return true;
-            }
-
+            string cat = element.Category?.Name ?? string.Empty;
+            string name = element.Name ?? string.Empty;
+            if (cat.IndexOf("window", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (cat.IndexOf("curtain", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (cat.IndexOf("glass", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (cat.IndexOf("glaz", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (name.IndexOf("glass", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (name.IndexOf("glaz", StringComparison.OrdinalIgnoreCase) >= 0) return true;
             return false;
-        }
-
-        private static void CollectFaceMaterialIds(GeometryElement geometry, int depth, HashSet<ElementId> materialIds)
-        {
-            if (geometry == null || depth > MaxDepth) return;
-            foreach (GeometryObject obj in geometry)
-            {
-                if (obj is GeometryInstance instance)
-                {
-                    CollectFaceMaterialIds(instance.GetSymbolGeometry(), depth + 1, materialIds);
-                    continue;
-                }
-                if (obj is Solid solid)
-                {
-                    foreach (Face face in solid.Faces)
-                    {
-                        try
-                        {
-                            ElementId id = face.MaterialElementId;
-                            if (id != null) materialIds.Add(id);
-                        }
-                        catch (Exception) { /* skip face */ }
-                    }
-                }
-            }
         }
 
         // Max batch was raised; SupportedCategories is no longer used in full-view mode (kept for reference).
@@ -151,8 +112,13 @@ namespace revit_mcp_plugin.Panel
             }
         }
 
-        public static PanelMeshResult Extract(Document doc, IList<Element> elements)
+        public static PanelMeshResult Extract(Document doc, IList<Element> elements, ExtractOptions extractOptions = null)
         {
+            extractOptions ??= new ExtractOptions();
+            int maxElapsedMs = extractOptions.MaxElapsedMs > 0
+                ? extractOptions.MaxElapsedMs
+                : DefaultMaxElapsedMs;
+
             var result = new PanelMeshResult();
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var options = new Options
@@ -162,7 +128,8 @@ namespace revit_mcp_plugin.Panel
                 ComputeReferences = false,
             };
 
-            PanelService.Instance.WritePanelLog($"Extract start count={elements?.Count ?? 0}");
+            PanelService.Instance.WritePanelLog(
+                $"Extract start count={elements?.Count ?? 0} skipLinks={extractOptions.SkipLinks} maxMs={maxElapsedMs}");
 
             int index = 0;
             foreach (Element element in elements)
@@ -172,6 +139,15 @@ namespace revit_mcp_plugin.Panel
                 {
                     result.SkippedElements++;
                     continue;
+                }
+
+                if (sw.ElapsedMilliseconds > maxElapsedMs)
+                {
+                    result.Truncated = true;
+                    result.SkippedElements += Math.Max(0, (elements?.Count ?? index) - index + 1);
+                    PanelService.Instance.WritePanelLog(
+                        $"Extract time-budget hit at {index}/{elements.Count} elapsedMs={sw.ElapsedMilliseconds}");
+                    break;
                 }
 
                 if (result.TotalVertices >= MaxVerticesPerBatch)
@@ -189,6 +165,12 @@ namespace revit_mcp_plugin.Panel
                 // so it is pickable/deletable as a single unit and moved by the link's transform.
                 if (element is RevitLinkInstance linkInstance)
                 {
+                    if (extractOptions.SkipLinks)
+                    {
+                        result.SkippedElements++;
+                        continue;
+                    }
+
                     long t0 = sw.ElapsedMilliseconds;
                     PanelService.Instance.WritePanelLog("Extract link start id=" + linkInstance.Id.Value);
                     ExtractLinkInstance(doc, linkInstance, options, result);
@@ -196,11 +178,20 @@ namespace revit_mcp_plugin.Panel
                     continue;
                 }
 
-                EmitElement(element, element.Id.Value, element.Category?.Name, element.Name,
+                long elementId = 0;
+                try { elementId = element.Id.Value; } catch { elementId = 0; }
+                long before = sw.ElapsedMilliseconds;
+                EmitElement(element, elementId, element.Category?.Name, element.Name,
                     Transform.Identity, options, result);
+                long took = sw.ElapsedMilliseconds - before;
+                if (took > 2000)
+                {
+                    PanelService.Instance.WritePanelLog(
+                        $"Extract slow element id={elementId} cat={element.Category?.Name} ms={took}");
+                }
             }
 
-            PanelService.Instance.WritePanelLog($"Extract done elements={result.Elements.Count} skipped={result.SkippedElements} verts={result.TotalVertices} elapsedMs={sw.ElapsedMilliseconds}");
+            PanelService.Instance.WritePanelLog($"Extract done elements={result.Elements.Count} skipped={result.SkippedElements} verts={result.TotalVertices} elapsedMs={sw.ElapsedMilliseconds} truncated={result.Truncated}");
             return result;
         }
 
