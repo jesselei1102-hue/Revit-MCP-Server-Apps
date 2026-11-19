@@ -33,6 +33,10 @@ namespace revit_mcp_plugin.Panel
         private static readonly ManualResetEventSlim CaptureGate = new(false);
         private static string _pendingCaptureRequestId;
         private static PanelCaptureResult _pendingCaptureResult;
+        private static PanelCaptureResult _lastUserCapture;
+        private static DateTime? _lastUserCaptureAtUtc;
+        private static string _lastUserCaptureFilePath;
+        private static string _lastUserCaptureFileName;
 
         public static void RegisterWebView(Microsoft.Web.WebView2.Wpf.WebView2 webView)
         {
@@ -149,6 +153,13 @@ namespace revit_mcp_plugin.Panel
         /// </summary>
         public static object Capture(JObject parameters, int timeoutMilliseconds = 20000)
         {
+            string source = parameters?.Value<string>("source");
+            if (string.Equals(source, "user", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(source, "lastUser", StringComparison.OrdinalIgnoreCase))
+            {
+                return GetLastUserCapture();
+            }
+
             if (!PanelService.Instance.WebViewReady)
             {
                 return new
@@ -285,6 +296,51 @@ namespace revit_mcp_plugin.Panel
                     lastPick = LastPickElementId,
                     lastPickAtUtc = LastPickAtUtc,
                     lastError = LastError,
+                    lastUserCapture = _lastUserCapture == null ? null : new
+                    {
+                        ok = _lastUserCapture.Ok,
+                        atUtc = _lastUserCaptureAtUtc,
+                        mimeType = _lastUserCapture.MimeType,
+                        width = _lastUserCapture.Width,
+                        height = _lastUserCapture.Height,
+                        byteLength = _lastUserCapture.ByteLength,
+                        fileName = _lastUserCaptureFileName,
+                        filePath = _lastUserCaptureFilePath,
+                        elementCount = _lastUserCapture.ElementCount,
+                    },
+                };
+            }
+        }
+
+        public static object GetLastUserCapture()
+        {
+            lock (Sync)
+            {
+                if (_lastUserCapture == null || !_lastUserCapture.Ok || string.IsNullOrEmpty(_lastUserCapture.DataBase64))
+                {
+                    return new
+                    {
+                        ok = false,
+                        error = "no_user_capture",
+                        message = "No user capture yet. Click Send capture in the Agent Canvas HUD first.",
+                    };
+                }
+
+                return new
+                {
+                    ok = true,
+                    source = "user",
+                    capturedAtUtc = _lastUserCaptureAtUtc,
+                    mimeType = _lastUserCapture.MimeType,
+                    width = _lastUserCapture.Width,
+                    height = _lastUserCapture.Height,
+                    byteLength = _lastUserCapture.ByteLength,
+                    dataBase64 = _lastUserCapture.DataBase64,
+                    fileName = _lastUserCaptureFileName,
+                    filePath = _lastUserCaptureFilePath,
+                    elementCount = _lastUserCapture.ElementCount,
+                    totalVertices = _lastUserCapture.TotalVertices,
+                    camera = _lastUserCapture.Camera,
                 };
             }
         }
@@ -332,12 +388,82 @@ namespace revit_mcp_plugin.Panel
                     if (elementId > 0)
                         QueuePick(elementId);
                     break;
+                case "request_geometry":
+                    PanelService.Instance.WritePanelLog("panel_js_request_geometry");
+                    LoadGeometryExternalEvent.Request();
+                    break;
+                case "user_capture":
+                    StoreUserCapture(payload ?? message);
+                    break;
                 case "capture_result":
                     CompleteCapture(payload ?? message);
                     break;
                 default:
                     PanelService.Instance.WritePanelLog("panel_js_unknown_type: " + type);
                     break;
+            }
+        }
+
+        private static PanelCaptureResult ParseCapturePayload(JObject payload)
+        {
+            bool ok = payload.Value<bool?>("ok") ?? (!string.IsNullOrEmpty(payload.Value<string>("dataBase64")));
+            return new PanelCaptureResult
+            {
+                Ok = ok,
+                Error = payload.Value<string>("error"),
+                Message = payload.Value<string>("message"),
+                MimeType = payload.Value<string>("mimeType") ?? "image/png",
+                Width = payload.Value<int?>("width") ?? 0,
+                Height = payload.Value<int?>("height") ?? 0,
+                ByteLength = payload.Value<int?>("byteLength") ?? 0,
+                DataBase64 = payload.Value<string>("dataBase64"),
+                ElementCount = payload.Value<int?>("elementCount") ?? 0,
+                TotalVertices = payload.Value<int?>("totalVertices") ?? 0,
+                Camera = payload["camera"],
+            };
+        }
+
+        private static void StoreUserCapture(JObject payload)
+        {
+            if (payload == null)
+                return;
+
+            var capture = ParseCapturePayload(payload);
+            string fileName = null;
+            string filePath = null;
+
+            if (capture.Ok && !string.IsNullOrEmpty(capture.DataBase64))
+            {
+                try
+                {
+                    string folder = PanelService.Instance.PanelTmpFolder;
+                    Directory.CreateDirectory(folder);
+                    string ext = string.Equals(capture.MimeType, "image/jpeg", StringComparison.OrdinalIgnoreCase)
+                        ? "jpg"
+                        : "png";
+                    fileName = "user_capture_" + Guid.NewGuid().ToString("N") + "." + ext;
+                    filePath = Path.Combine(folder, fileName);
+                    File.WriteAllBytes(filePath, Convert.FromBase64String(capture.DataBase64));
+                    PanelService.Instance.WritePanelLog(
+                        $"panel_user_capture saved {fileName} {capture.Width}x{capture.Height}");
+                }
+                catch (Exception ex)
+                {
+                    PanelService.Instance.WritePanelLog("panel_user_capture_save_failed: " + ex.Message);
+                }
+            }
+            else
+            {
+                PanelService.Instance.WritePanelLog(
+                    "panel_user_capture_failed: " + (capture.Message ?? capture.Error ?? "unknown"));
+            }
+
+            lock (Sync)
+            {
+                _lastUserCapture = capture;
+                _lastUserCaptureAtUtc = DateTime.UtcNow;
+                _lastUserCaptureFileName = fileName;
+                _lastUserCaptureFilePath = filePath;
             }
         }
 
@@ -358,21 +484,7 @@ namespace revit_mcp_plugin.Panel
                     return;
                 }
 
-                bool ok = payload.Value<bool?>("ok") ?? false;
-                _pendingCaptureResult = new PanelCaptureResult
-                {
-                    Ok = ok,
-                    Error = payload.Value<string>("error"),
-                    Message = payload.Value<string>("message"),
-                    MimeType = payload.Value<string>("mimeType") ?? "image/png",
-                    Width = payload.Value<int?>("width") ?? 0,
-                    Height = payload.Value<int?>("height") ?? 0,
-                    ByteLength = payload.Value<int?>("byteLength") ?? 0,
-                    DataBase64 = payload.Value<string>("dataBase64"),
-                    ElementCount = payload.Value<int?>("elementCount") ?? 0,
-                    TotalVertices = payload.Value<int?>("totalVertices") ?? 0,
-                    Camera = payload["camera"],
-                };
+                _pendingCaptureResult = ParseCapturePayload(payload);
             }
 
             CaptureGate.Set();

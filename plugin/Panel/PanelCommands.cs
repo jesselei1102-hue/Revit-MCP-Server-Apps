@@ -22,6 +22,7 @@ namespace revit_mcp_plugin.Panel
 
             // ExternalEvent.Create must happen on a standard Revit API execution context.
             PickExternalEvent.Register();
+            LoadGeometryExternalEvent.Register();
         }
 
         public static IList<IRevitCommand> CreateCommands(UIApplication uiApp)

@@ -143,6 +143,12 @@ export function registerPanelTools(server: McpServer) {
             .boolean()
             .optional()
             .describe("Also write the image under panel-view/tmp. Default true."),
+          source: z
+            .enum(["live", "user"])
+            .optional()
+            .describe(
+              "live (default): snapshot the canvas now. user: return the last image the user sent via the panel Send capture button."
+            ),
         })
         .optional(),
     },

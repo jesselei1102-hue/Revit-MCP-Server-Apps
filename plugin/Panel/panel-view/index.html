@@ -24,6 +24,16 @@
       border: 1px solid #2d2d34; background: rgba(255,255,255,.04); color: #d9d9e2; font-size: 11px;
   }
   .hud-toggle.active { border-color: #3f6a85; background: rgba(90, 214, 255, .12); color: #bfe9ff; }
+  .hud-actions {
+      pointer-events: auto; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;
+  }
+  .hud-btn {
+      cursor: pointer; user-select: none; border: 1px solid #2d2d34; border-radius: 5px;
+      background: rgba(255,255,255,.06); color: #e4e4ea; font-size: 11px; padding: 4px 10px;
+  }
+  .hud-btn:hover { border-color: #3f6a85; background: rgba(90, 214, 255, .10); color: #dff3ff; }
+  .hud-btn:disabled { opacity: .45; cursor: default; }
+  .hud-btn.primary { border-color: #3f6a85; background: rgba(90, 214, 255, .14); color: #cfeeff; }
   .axes-note { position: absolute; right: 10px; top: 10px; color: #6b6b74; font-size: 11px; user-select: none; }
   .legend {
       position: absolute; left: 10px; bottom: 10px; padding: 8px 10px; border-radius: 8px;
@@ -42,6 +52,10 @@
     <h1>MCP Agent Canvas · model</h1>
     <div>drag = orbit · wheel = zoom · right-drag = pan · click = pick</div>
     <div id="status">initializing…</div>
+    <div class="hud-actions">
+      <button type="button" class="hud-btn primary" id="btn-load-view" title="Extract geometry from the active Revit 3D/view into this panel">Load Revit view</button>
+      <button type="button" class="hud-btn" id="btn-send-capture" title="Snapshot this canvas and keep it for the agent / rendering model">Send capture</button>
+    </div>
   </div>
   <div class="axes-note">x&nbsp;red · y&nbsp;green · z&nbsp;blue</div>
   <div class="legend" id="legend"><h2>Analysis</h2><div id="legend-body"></div></div>
@@ -54,7 +68,10 @@
       var status = document.getElementById('status');
       var legend = document.getElementById('legend');
       var legendBody = document.getElementById('legend-body');
+      var btnLoadView = document.getElementById('btn-load-view');
+      var btnSendCapture = document.getElementById('btn-send-capture');
       var bridge = window.chrome && window.chrome.webview ? window.chrome.webview : null;
+      var loadInFlight = false;
 
       function setStatus(text, color) {
         status.textContent = text;
@@ -659,11 +676,63 @@
             case 'capture':
               handleCapture(payload || {});
               break;
+            case 'load_geometry_progress':
+              setStatus(payload.message || 'extracting…', '#9a9aa2');
+              break;
+            case 'load_geometry_result':
+              loadInFlight = false;
+              if (btnLoadView) btnLoadView.disabled = false;
+              if (payload && payload.ok) {
+                setStatus('loaded from Revit · ' + (payload.viewName || 'view')
+                  + ' · ' + (payload.elementCount || 0) + ' elements'
+                  + (payload.truncated ? ' · truncated' : ''), '#7dcea0');
+              } else {
+                setStatus('load failed: ' + ((payload && (payload.message || payload.error)) || 'unknown'), '#c05a5a');
+              }
+              break;
             case 'status':
               postToHost('log', { message: 'status requested' });
               break;
             default:
               break;
+          }
+        });
+      }
+
+      if (btnLoadView) {
+        btnLoadView.addEventListener('click', function () {
+          if (loadInFlight) return;
+          if (!bridge) {
+            setStatus('error: no host bridge', '#c05a5a');
+            return;
+          }
+          loadInFlight = true;
+          btnLoadView.disabled = true;
+          setStatus('requesting Revit view…');
+          postToHost('request_geometry', {});
+        });
+      }
+
+      if (btnSendCapture) {
+        btnSendCapture.addEventListener('click', function () {
+          try {
+            var result = captureFrame({
+              format: 'jpeg',
+              quality: 0.9,
+              maxWidth: 1600,
+              maxHeight: 1600,
+            });
+            result.source = 'user';
+            postToHost('user_capture', result);
+            setStatus('capture sent · ' + result.width + '×' + result.height, '#7dcea0');
+          } catch (error) {
+            setStatus('capture failed: ' + (error && error.message ? error.message : String(error)), '#c05a5a');
+            postToHost('user_capture', {
+              ok: false,
+              source: 'user',
+              error: 'capture_failed',
+              message: error && error.message ? error.message : String(error),
+            });
           }
         });
       }
