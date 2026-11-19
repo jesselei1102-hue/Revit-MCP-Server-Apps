@@ -60,7 +60,7 @@ namespace revit_mcp_plugin.Panel
             var elements = new JArray();
             foreach (PanelMeshElementInfo element in extraction.Elements)
             {
-                elements.Add(new JObject
+                var elementJson = new JObject
                 {
                     ["elementId"] = element.ElementId,
                     ["name"] = element.Name ?? string.Empty,
@@ -70,7 +70,40 @@ namespace revit_mcp_plugin.Panel
                     ["vertexCount"] = element.VertexCount,
                     ["firstIndex"] = element.FirstIndex,
                     ["indexCount"] = element.IndexCount,
-                });
+                    ["cutIndexCount"] = element.CutIndexCount,
+                };
+                if (element.CutColor.HasValue)
+                    elementJson["cutColor"] = $"#{element.CutColor.Value:X6}";
+                elements.Add(elementJson);
+            }
+
+            var cutPlanes = new JArray();
+            if (extraction.CutPlanes != null && extraction.CutPlanes.Count >= 6)
+            {
+                for (int i = 0; i + 5 < extraction.CutPlanes.Count; i += 6)
+                {
+                    cutPlanes.Add(new JObject
+                    {
+                        ["nx"] = extraction.CutPlanes[i],
+                        ["ny"] = extraction.CutPlanes[i + 1],
+                        ["nz"] = extraction.CutPlanes[i + 2],
+                        ["ox"] = extraction.CutPlanes[i + 3],
+                        ["oy"] = extraction.CutPlanes[i + 4],
+                        ["oz"] = extraction.CutPlanes[i + 5],
+                    });
+                }
+            }
+
+            var sectionCorners = new JArray();
+            if (extraction.SectionBoxCorners != null)
+            {
+                for (int i = 0; i + 2 < extraction.SectionBoxCorners.Count; i += 3)
+                {
+                    sectionCorners.Add(new JArray(
+                        extraction.SectionBoxCorners[i],
+                        extraction.SectionBoxCorners[i + 1],
+                        extraction.SectionBoxCorners[i + 2]));
+                }
             }
 
             var payload = new JObject
@@ -82,6 +115,9 @@ namespace revit_mcp_plugin.Panel
                 ["totalIndices"] = extraction.TotalIndices,
                 ["truncated"] = extraction.Truncated,
                 ["skippedElements"] = extraction.SkippedElements,
+                ["clientSectionClip"] = extraction.ClientSectionClip,
+                ["cutPlanes"] = cutPlanes,
+                ["sectionBoxCorners"] = sectionCorners,
                 ["elements"] = elements,
                 ["positionsB64"] = Convert.ToBase64String(positionsBytes),
                 ["indicesB64"] = Convert.ToBase64String(indicesBytes),

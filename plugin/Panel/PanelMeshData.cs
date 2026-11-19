@@ -26,6 +26,17 @@ namespace revit_mcp_plugin.Panel
         /// <summary>Number of indices belonging to this element.</summary>
         public int IndexCount { get; set; }
 
+        /// <summary>
+        /// Trailing index count for section/scope-box cut faces (emitted after surface faces).
+        /// 0 = no cut faces. Frontend uses a distinct cut material for this range.
+        /// </summary>
+        public int CutIndexCount { get; set; }
+
+        /// <summary>
+        /// Optional 0xRRGGBB cut fill from the face material. Null → panel default cut gray.
+        /// </summary>
+        public int? CutColor { get; set; }
+
         /// <summary>Faces successfully triangulated for this element (runtime extract budget).</summary>
         public int FacesEmitted { get; set; }
     }
@@ -38,6 +49,18 @@ namespace revit_mcp_plugin.Panel
         public List<PanelMeshElementInfo> Elements { get; } = new();
         public List<float> Positions { get; } = new();   // x, y, z ...
         public List<uint> Indices { get; } = new();      // triangle indices into Positions
+
+        /// <summary>
+        /// Section / scope-box planes in model space (nx,ny,nz,ox,oy,oz).
+        /// Panel clips with these (Three.js) — do not rely on Options.View for the cut.
+        /// </summary>
+        public List<float> CutPlanes { get; } = new();
+
+        /// <summary>Eight section-box corners in model space (x,y,z × 8) for camera fit. Empty if inactive.</summary>
+        public List<float> SectionBoxCorners { get; } = new();
+
+        /// <summary>True when the panel should clip with CutPlanes instead of Revit Options.View.</summary>
+        public bool ClientSectionClip { get; set; }
 
         public bool Truncated { get; set; }
         public int SkippedElements { get; set; }

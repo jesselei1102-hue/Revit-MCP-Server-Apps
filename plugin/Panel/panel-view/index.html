@@ -54,6 +54,7 @@
     <div id="status">initializing…</div>
     <div class="hud-actions">
       <button type="button" class="hud-btn primary" id="btn-load-view" title="Extract geometry from the active Revit view into this panel (same path as the agent; time-capped)">Load Revit view</button>
+      <button type="button" class="hud-btn" id="btn-home-view" title="Restore the default fit view after load">默认视角</button>
       <button type="button" class="hud-btn" id="btn-send-capture" title="Snapshot this canvas and keep it for the agent / rendering model">Send capture</button>
     </div>
   </div>
@@ -69,6 +70,7 @@
       var legend = document.getElementById('legend');
       var legendBody = document.getElementById('legend-body');
       var btnLoadView = document.getElementById('btn-load-view');
+      var btnHomeView = document.getElementById('btn-home-view');
       var btnSendCapture = document.getElementById('btn-send-capture');
       var bridge = window.chrome && window.chrome.webview ? window.chrome.webview : null;
       var loadInFlight = false;
@@ -103,6 +105,8 @@
         renderer.toneMappingExposure = 1.05;
       }
       renderer.setSize(host.clientWidth, host.clientHeight);
+      // Section-box clip is done here (not via Revit Options.View) so the cut matches GetSectionBox.
+      renderer.localClippingEnabled = true;
       host.appendChild(renderer.domElement);
 
       var scene = new THREE.Scene();
@@ -127,6 +131,39 @@
       controls.maxDistance = 50000;
       controls.minDistance = 0.05;
       controls.update();
+
+      // ----- Home pose (default fit after Load) -----
+      var homePose = null;
+
+      function saveHomePose() {
+        homePose = {
+          position: camera.position.clone(),
+          target: controls.target.clone(),
+          up: camera.up.clone(),
+          near: camera.near,
+          far: camera.far,
+          maxDistance: controls.maxDistance,
+          minDistance: controls.minDistance,
+        };
+      }
+
+      function restoreHomePose() {
+        if (!homePose) {
+          fitCameraToModel();
+          return;
+        }
+        camera.position.copy(homePose.position);
+        camera.up.copy(homePose.up || new THREE.Vector3(0, 0, 1));
+        camera.near = homePose.near;
+        camera.far = homePose.far;
+        camera.updateProjectionMatrix();
+        controls.target.copy(homePose.target);
+        controls.maxDistance = homePose.maxDistance;
+        controls.minDistance = homePose.minDistance;
+        controls.enabled = true;
+        controls.update();
+        setStatus('restored default view');
+      }
 
       scene.add(new THREE.HemisphereLight(0xffffff, 0x2a2a30, 1.1));
       var key = new THREE.DirectionalLight(0xffffff, 1.2);
@@ -153,6 +190,17 @@
 
       // Remove every mesh (and its hard-edge overlay) that belongs to the given elementId.
       // Disposes geometry to avoid GPU-memory leaks on incremental sync.
+      function disposeSceneChild(child) {
+        if (!child) return;
+        // Section-fill backfaces share geometry with the front mesh — only dispose material.
+        if (child.userData && child.userData.isSectionFill) {
+          disposeMeshMaterial(child.material);
+          return;
+        }
+        if (child.geometry) child.geometry.dispose();
+        disposeMeshMaterial(child.material);
+      }
+
       function removeElements(elementIds) {
         if (!elementIds || elementIds.length === 0) return;
         var idSet = new Set(elementIds.map(Number));
@@ -164,11 +212,7 @@
           else if (child.userData && child.userData.sourceElementId != null) victimId = Number(child.userData.sourceElementId);
           if (victimId != null && idSet.has(victimId)) {
             modelRoot.remove(child);
-            if (child.geometry) child.geometry.dispose();
-            if (child.material) {
-              if (Array.isArray(child.material)) child.material.forEach(function (m) { m.dispose(); });
-              else if (child.material !== edgeLineMaterial) child.material.dispose();
-            }
+            disposeSceneChild(child);
           }
         }
 
@@ -208,13 +252,30 @@
         geometry.computeVertexNormals();
 
         var isGlazed = Boolean(element.isGlazed);
-        var mesh = new THREE.Mesh(geometry, materialForElement(elementId, element.category, isGlazed));
+        var cutIndexCount = Math.max(0, Math.min(indexCount, Number(element.cutIndexCount) || 0));
+        var cutColor = element.cutColor || null;
+        var entry = {
+          mesh: null,
+          elementId: elementId,
+          category: element.category || '',
+          isGlazed: isGlazed,
+          cutIndexCount: cutIndexCount,
+          cutColor: cutColor,
+        };
+
+        if (cutIndexCount > 0) {
+          var surfaceCount = indexCount - cutIndexCount;
+          geometry.clearGroups();
+          if (surfaceCount > 0) geometry.addGroup(0, surfaceCount, 0);
+          geometry.addGroup(surfaceCount, cutIndexCount, surfaceCount > 0 ? 1 : 0);
+        }
+
+        var mesh = new THREE.Mesh(geometry, materialsForEntry(entry, indexCount));
         mesh.userData.elementId = elementId;
         mesh.userData.name = element.name || '';
         mesh.userData.category = element.category || '';
         mesh.userData.isGlazed = isGlazed;
-
-        var entry = { mesh: mesh, elementId: elementId, category: element.category || '', isGlazed: isGlazed };
+        entry.mesh = mesh;
 
         if (useEdgeOverlay) {
           try {
@@ -236,6 +297,137 @@
 
         modelRoot.add(mesh);
         return entry;
+      }
+
+      /**
+       * Tag cut-cap triangles and paint them unlit dark (Revit-like).
+       * Prefer section-box planes from the payload; fall back to model AABB faces.
+       * Always re-applies materials so Standard-lit gray cannot wash back to white.
+       */
+      function promoteCutFacesFromModelBounds() {
+        if (!elementMeshes.length) return 0;
+
+        var planes = Array.isArray(lastCutPlanes) ? lastCutPlanes.slice() : [];
+        // 1 ft — host cut caps often sit a bit off GetSectionBox due to wall layers / coarse mesh.
+        var tol = 1.0;
+
+        if (!planes.length) {
+          var box = new THREE.Box3();
+          elementMeshes.forEach(function (entry) {
+            if (!entry.mesh || !entry.mesh.geometry) return;
+            entry.mesh.geometry.computeBoundingBox();
+            var bb = entry.mesh.geometry.boundingBox;
+            if (bb && !bb.isEmpty()) box.union(bb);
+          });
+          if (box.isEmpty()) return 0;
+          var min = box.min;
+          var max = box.max;
+          var extent = Math.max(max.x - min.x, max.y - min.y, max.z - min.z);
+          tol = Math.max(0.5, Math.min(1.5, extent * 0.003));
+          planes = [
+            { nx: -1, ny: 0, nz: 0, ox: min.x, oy: min.y, oz: min.z },
+            { nx: 1, ny: 0, nz: 0, ox: max.x, oy: max.y, oz: max.z },
+            { nx: 0, ny: -1, nz: 0, ox: min.x, oy: min.y, oz: min.z },
+            { nx: 0, ny: 1, nz: 0, ox: max.x, oy: max.y, oz: max.z },
+            { nx: 0, ny: 0, nz: -1, ox: min.x, oy: min.y, oz: min.z },
+            { nx: 0, ny: 0, nz: 1, ox: max.x, oy: max.y, oz: max.z },
+          ];
+        }
+
+        var a = new THREE.Vector3();
+        var b = new THREE.Vector3();
+        var c = new THREE.Vector3();
+        var promoted = 0;
+
+        function distToPlane(p, plane) {
+          return Math.abs(
+            plane.nx * (p.x - plane.ox)
+            + plane.ny * (p.y - plane.oy)
+            + plane.nz * (p.z - plane.oz)
+          );
+        }
+
+        function triangleOnCutPlane(pa, pb, pc) {
+          for (var i = 0; i < planes.length; i++) {
+            var plane = planes[i];
+            if (distToPlane(pa, plane) > tol) continue;
+            if (distToPlane(pb, plane) > tol) continue;
+            if (distToPlane(pc, plane) > tol) continue;
+            return true;
+          }
+          return false;
+        }
+
+        elementMeshes.forEach(function (entry) {
+          var geom = entry.mesh.geometry;
+          var posAttr = geom.getAttribute('position');
+          var indexAttr = geom.getIndex();
+          if (!posAttr || !indexAttr || indexAttr.count < 3) return;
+
+          var surface = [];
+          var cut = [];
+          for (var i = 0; i < indexAttr.count; i += 3) {
+            var i0 = indexAttr.getX(i);
+            var i1 = indexAttr.getX(i + 1);
+            var i2 = indexAttr.getX(i + 2);
+            a.fromBufferAttribute(posAttr, i0);
+            b.fromBufferAttribute(posAttr, i1);
+            c.fromBufferAttribute(posAttr, i2);
+            if (triangleOnCutPlane(a, b, c)) cut.push(i0, i1, i2);
+            else surface.push(i0, i1, i2);
+          }
+
+          if (!cut.length) {
+            // Still refresh materials if server already tagged a trailing cut range.
+            if (entry.cutIndexCount > 0) {
+              disposeMeshMaterial(entry.mesh.material);
+              entry.mesh.material = materialsForEntry(entry, indexAttr.count);
+            }
+            return;
+          }
+
+          var merged = new Uint32Array(surface.length + cut.length);
+          merged.set(surface, 0);
+          merged.set(cut, surface.length);
+          geom.setIndex(new THREE.BufferAttribute(merged, 1));
+          geom.clearGroups();
+          if (surface.length > 0) geom.addGroup(0, surface.length, 0);
+          geom.addGroup(surface.length, cut.length, surface.length > 0 ? 1 : 0);
+
+          entry.cutIndexCount = cut.length;
+          disposeMeshMaterial(entry.mesh.material);
+          entry.mesh.material = materialsForEntry(entry, merged.length);
+          promoted += 1;
+        });
+
+        return promoted;
+      }
+
+      /**
+       * When section/scope-box planes are active, add a dark BackSide mesh per element.
+       * Looking into a clipped opening then shows dark "cut fill" instead of white interiors —
+       * same trick many BIM viewers use when Revit cut caps are missing from the mesh.
+       */
+      function applySectionBackfaceFill() {
+        if (!lastCutPlanes.length || !elementMeshes.length) return 0;
+        var added = 0;
+        elementMeshes.forEach(function (entry) {
+          if (!entry.mesh || entry.backMesh || entry.isGlazed) return;
+          var backMat = applyClipToMaterial(new THREE.MeshBasicMaterial({
+            color: CUT_FACE_DEFAULT,
+            side: THREE.BackSide,
+            polygonOffset: true,
+            polygonOffsetFactor: 1,
+            polygonOffsetUnits: 1,
+          }));
+          var back = new THREE.Mesh(entry.mesh.geometry, backMat);
+          back.userData.elementId = entry.elementId;
+          back.userData.isSectionFill = true;
+          entry.backMesh = back;
+          modelRoot.add(back);
+          added += 1;
+        });
+        return added;
       }
 
       function applyGeometryDelta(message) {
@@ -287,6 +479,12 @@
               }
             });
 
+            promoteCutFacesFromModelBounds();
+            applySectionBackfaceFill();
+            if (activeClipPlanes.length) {
+              setSectionClipping(lastCutPlanes, true);
+            }
+
             lastTotals = {
               elementCount: elementMeshes.length,
               totalVertices: elementMeshes.reduce(function (sum, entry) {
@@ -306,14 +504,12 @@
         for (var i = modelRoot.children.length - 1; i >= 0; i--) {
           var child = modelRoot.children[i];
           modelRoot.remove(child);
-          if (child.geometry) child.geometry.dispose();
-          if (child.material) {
-            if (Array.isArray(child.material)) child.material.forEach(function (m) { m.dispose(); });
-            else child.material.dispose();
-          }
+          disposeSceneChild(child);
         }
         // also clear edge overlays (they are separate children of modelRoot)
         elementMeshes = [];
+        lastSectionCorners = [];
+        setSectionClipping([], false);
       }
 
       function decodeBase64Float32(base64) {
@@ -348,6 +544,47 @@
       var WHITE_MODEL_GREEN  = 0x3d7a3a;               // vegetation
       var WHITE_MODEL_EMISSIVE = 0x2a2418;             // faint warm self-bounce (keeps large flat faces from flattening to pure gray)
       var WHITE_MODEL_EMISSIVE_INTENSITY = 0.35;
+      // Section / scope-box cut fill — near-black like Revit shaded cut, never warm white.
+      // MeshBasicMaterial (unlit) so bright key lights cannot wash it back to white.
+      var CUT_FACE_DEFAULT = 0x2a2a2e;
+      var lastCutPlanes = [];
+      var lastSectionCorners = [];
+      var activeClipPlanes = []; // THREE.Plane[] — outward normals, clip positive side
+
+      function setSectionClipping(planesData, enabled) {
+        activeClipPlanes = [];
+        if (enabled && Array.isArray(planesData) && planesData.length > 0) {
+          planesData.forEach(function (p) {
+            if (!p) return;
+            // Payload normals are outward (from CollectSectionBoxPlanes). Three.js keeps the
+            // positive side of each plane and discards the negative — so flip to inward.
+            var n = new THREE.Vector3(-(Number(p.nx) || 0), -(Number(p.ny) || 0), -(Number(p.nz) || 0));
+            if (n.lengthSq() < 1e-12) return;
+            n.normalize();
+            var o = new THREE.Vector3(Number(p.ox) || 0, Number(p.oy) || 0, Number(p.oz) || 0);
+            var plane = new THREE.Plane();
+            plane.setFromNormalAndCoplanarPoint(n, o);
+            activeClipPlanes.push(plane);
+          });
+        }
+        renderer.localClippingEnabled = activeClipPlanes.length > 0;
+        // Push onto every live material (including section-fill backfaces).
+        modelRoot.traverse(function (obj) {
+          if (!obj.material) return;
+          applyClipToMaterial(obj.material);
+        });
+      }
+
+      function applyClipToMaterial(mat) {
+        if (!mat) return mat;
+        if (Array.isArray(mat)) {
+          mat.forEach(applyClipToMaterial);
+          return mat;
+        }
+        mat.clippingPlanes = activeClipPlanes.length ? activeClipPlanes : null;
+        mat.needsUpdate = true;
+        return mat;
+      }
 
       function categoryMatches(catLower, needles) {
         for (var i = 0; i < needles.length; i++) {
@@ -386,7 +623,7 @@
 
         var transparent = Boolean(isGlazed && !isPicked && !analysis);
         var highlighted = isPicked;
-        return new THREE.MeshStandardMaterial({
+        return applyClipToMaterial(new THREE.MeshStandardMaterial({
           color: color,
           roughness: 0.9,
           metalness: 0.0,
@@ -397,7 +634,54 @@
           opacity: transparent ? 0.35 : 1.0,
           depthWrite: !transparent,
           side: transparent ? THREE.DoubleSide : THREE.FrontSide,
-        });
+        }));
+      }
+
+      function materialForCut(elementId, cutColor) {
+        var isPicked = pickedElementId != null && Number(elementId) === Number(pickedElementId);
+        var analysis = analysisByElementId.get(Number(elementId));
+        var color = CUT_FACE_DEFAULT;
+        if (isPicked) {
+          color = 0x1a8aab;
+        } else if (analysis && analysis.color) {
+          var parsedAnalysis = parseColor(analysis.color);
+          if (parsedAnalysis != null) color = parsedAnalysis;
+        } else {
+          var parsed = parseColor(cutColor);
+          // Reject near-white cut colors from materials — those read as broken white model.
+          if (parsed != null) {
+            var r = (parsed >> 16) & 255, g = (parsed >> 8) & 255, b = parsed & 255;
+            if (r < 220 || g < 220 || b < 220) color = parsed;
+          }
+        }
+        return applyClipToMaterial(new THREE.MeshBasicMaterial({
+          color: color,
+          side: THREE.DoubleSide,
+        }));
+      }
+
+      function materialsForEntry(entry, totalIndexCount) {
+        var surface = materialForElement(entry.elementId, entry.category, entry.isGlazed);
+        if (!entry.cutIndexCount) return surface;
+        var cut = materialForCut(entry.elementId, entry.cutColor);
+        var indexCount = totalIndexCount;
+        if (indexCount == null && entry.mesh && entry.mesh.geometry && entry.mesh.geometry.index) {
+          indexCount = entry.mesh.geometry.index.count;
+        }
+        // All indices are cut faces → single cut material (group index 0).
+        if (indexCount > 0 && entry.cutIndexCount >= indexCount) return cut;
+        return [surface, cut];
+      }
+
+      function disposeMeshMaterial(material) {
+        if (!material) return;
+        if (Array.isArray(material)) {
+          material.forEach(function (m) {
+            if (m && m !== edgeLineMaterial) m.dispose();
+          });
+        } else if (material !== edgeLineMaterial) {
+          material.dispose();
+        }
       }
 
       function parseColor(input) {
@@ -442,8 +726,8 @@
 
       function rebuildMaterials() {
         elementMeshes.forEach(function (entry) {
-          if (entry.mesh.material) entry.mesh.material.dispose();
-          entry.mesh.material = materialForElement(entry.elementId, entry.category, entry.isGlazed);
+          disposeMeshMaterial(entry.mesh.material);
+          entry.mesh.material = materialsForEntry(entry);
         });
         renderLegend();
       }
@@ -509,10 +793,20 @@
 
             clearModel();
 
+            lastCutPlanes = Array.isArray(payload.cutPlanes) ? payload.cutPlanes : [];
+            lastSectionCorners = Array.isArray(payload.sectionBoxCorners) ? payload.sectionBoxCorners : [];
+            // Enable clip before meshes so new materials pick up the planes.
+            setSectionClipping(lastCutPlanes, Boolean(payload.clientSectionClip) && lastCutPlanes.length > 0);
+
             elements.forEach(function (element) {
               var entry = buildElementObject(element, positions, indices, edgeLayer);
               if (entry) elementMeshes.push(entry);
             });
+
+            var cutPromoted = promoteCutFacesFromModelBounds();
+            var sectionFills = applySectionBackfaceFill();
+            // Re-apply in case backface mats were created after setSectionClipping.
+            setSectionClipping(lastCutPlanes, Boolean(payload.clientSectionClip) && lastCutPlanes.length > 0);
 
             lastTotals = {
               elementCount: payload.elementCount || elements.length,
@@ -522,8 +816,16 @@
             fitCameraToModel();
             setStatus('elements: ' + lastTotals.elementCount
               + ' · verts: ' + lastTotals.totalVertices
-              + (payload.truncated ? ' · truncated' : ''));
-            postToHost('log', { message: 'geometry loaded', elementCount: lastTotals.elementCount });
+              + (payload.truncated ? ' · truncated' : '')
+              + (activeClipPlanes.length ? ' · clip ' + activeClipPlanes.length : ''));
+            postToHost('log', {
+              message: 'geometry loaded',
+              elementCount: lastTotals.elementCount,
+              clientSectionClip: Boolean(payload.clientSectionClip),
+              clipPlanes: activeClipPlanes.length,
+              cutPromoted: cutPromoted,
+              sectionFills: sectionFills,
+            });
           })
           .catch(function (error) {
             fail(error && error.message ? error.message : String(error));
@@ -531,21 +833,34 @@
       }
 
       function fitCameraToModel() {
-        if (elementMeshes.length === 0) {
+        if (elementMeshes.length === 0 && lastSectionCorners.length === 0) {
           camera.position.set(6.2, 5.0, 7.4);
+          camera.up.set(0, 0, 1);
           controls.target.set(0, 0, 0);
+          controls.enabled = true;
           controls.update();
+          saveHomePose();
           return;
         }
 
         var box = new THREE.Box3();
-        elementMeshes.forEach(function (entry) {
-          box.expandByObject(entry.mesh);
-        });
+        // Prefer the Revit section box extents so the default view matches the cut.
+        if (lastSectionCorners.length > 0) {
+          lastSectionCorners.forEach(function (c) {
+            if (!c || c.length < 3) return;
+            box.expandByPoint(new THREE.Vector3(Number(c[0]), Number(c[1]), Number(c[2])));
+          });
+        } else {
+          elementMeshes.forEach(function (entry) {
+            box.expandByObject(entry.mesh);
+          });
+        }
 
         if (box.isEmpty()) {
           controls.target.set(0, 0, 0);
+          controls.enabled = true;
           controls.update();
+          saveHomePose();
           return;
         }
 
@@ -556,6 +871,7 @@
         var maxDist = Math.max(radius * 40, 2000);
         var minDist = Math.max(radius / 5000, 0.05);
 
+        camera.up.set(0, 0, 1);
         controls.target.copy(center);
         controls.maxDistance = maxDist;
         controls.minDistance = minDist;
@@ -563,7 +879,9 @@
         camera.near = Math.max(radius / 10000, 0.01);
         camera.far = Math.max(maxDist * 4, radius * 100, 5000);
         camera.updateProjectionMatrix();
+        controls.enabled = true;
         controls.update();
+        saveHomePose();
       }
 
       function pickAny(obj, names) {
@@ -617,6 +935,12 @@
       var pointer = new THREE.Vector2();
       var downPosition = null;
 
+      if (btnHomeView) {
+        btnHomeView.addEventListener('click', function () {
+          restoreHomePose();
+        });
+      }
+
       renderer.domElement.addEventListener('pointerdown', function (event) {
         if (event.button !== 0) {
           downPosition = null;
@@ -639,7 +963,9 @@
         pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
         raycaster.setFromCamera(pointer, camera);
 
-        var hits = raycaster.intersectObjects(modelRoot.children, false);
+        var hits = raycaster.intersectObjects(modelRoot.children, false).filter(function (hit) {
+          return !(hit.object.userData && hit.object.userData.isSectionFill);
+        });
         if (hits.length === 0) {
           if (pickedElementId != null) {
             pickedElementId = null;
