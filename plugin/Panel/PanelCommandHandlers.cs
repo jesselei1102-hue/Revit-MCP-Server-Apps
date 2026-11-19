@@ -50,8 +50,9 @@ namespace revit_mcp_plugin.Panel
                 {
                     foreach (ElementId id in uiDoc.Selection.GetElementIds())
                     {
-                        if (id != null && id.Value > 0)
-                            ids.Add(id.Value);
+                        long value = id == null ? 0 : PanelElementIds.GetValue(id);
+                        if (value > 0)
+                            ids.Add(value);
                     }
                 }
 

@@ -81,20 +81,23 @@ namespace revit_mcp_plugin.Panel
 
                 foreach (ElementId id in deletedIds)
                 {
-                    if (id != null && id.Value > 0)
-                        deleted.Add(id.Value);
+                    long value = id == null ? 0 : PanelElementIds.GetValue(id);
+                    if (value > 0)
+                        deleted.Add(value);
                 }
 
                 foreach (ElementId id in addedIds)
                 {
-                    if (id != null && id.Value > 0)
-                        upsert.Add(id.Value);
+                    long value = id == null ? 0 : PanelElementIds.GetValue(id);
+                    if (value > 0)
+                        upsert.Add(value);
                 }
 
                 foreach (ElementId id in modifiedIds)
                 {
-                    if (id != null && id.Value > 0)
-                        upsert.Add(id.Value);
+                    long value = id == null ? 0 : PanelElementIds.GetValue(id);
+                    if (value > 0)
+                        upsert.Add(value);
                 }
 
                 if (deleted.Count == 0 && upsert.Count == 0)
@@ -204,7 +207,7 @@ namespace revit_mcp_plugin.Panel
                 foreach (long id in upsert)
                 {
                     Element element;
-                    try { element = doc.GetElement(new ElementId(id)); }
+                    try { element = doc.GetElement(PanelElementIds.Create(id)); }
                     catch (Exception) { element = null; }
 
                     if (element == null)

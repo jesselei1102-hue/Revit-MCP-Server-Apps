@@ -88,7 +88,7 @@ namespace revit_mcp_plugin.Panel
                 foreach (long idValue in requestedIds)
                 {
                     ElementId id;
-                    try { id = new ElementId(idValue); }
+                    try { id = PanelElementIds.Create(idValue); }
                     catch (Exception) { continue; }
                     Element element = doc.GetElement(id);
                     if (element != null)
@@ -208,14 +208,14 @@ namespace revit_mcp_plugin.Panel
                     }
 
                     long t0 = sw.ElapsedMilliseconds;
-                    PanelService.Instance.WritePanelLog("Extract link start id=" + linkInstance.Id.Value);
+                    PanelService.Instance.WritePanelLog("Extract link start id=" + PanelElementIds.GetValue(linkInstance.Id));
                     ExtractLinkInstance(doc, linkInstance, options, result, cutContext);
-                    PanelService.Instance.WritePanelLog($"Extract link done id={linkInstance.Id.Value} verts={result.TotalVertices} linkMs={sw.ElapsedMilliseconds - t0} elapsedMs={sw.ElapsedMilliseconds}");
+                    PanelService.Instance.WritePanelLog($"Extract link done id={PanelElementIds.GetValue(linkInstance.Id)} verts={result.TotalVertices} linkMs={sw.ElapsedMilliseconds - t0} elapsedMs={sw.ElapsedMilliseconds}");
                     continue;
                 }
 
                 long elementId = 0;
-                try { elementId = element.Id.Value; } catch { elementId = 0; }
+                try { elementId = PanelElementIds.GetValue(element.Id); } catch { elementId = 0; }
                 long before = sw.ElapsedMilliseconds;
                 EmitElement(element, elementId, element.Category?.Name, element.Name,
                     Transform.Identity, options, result, cutContext);
@@ -303,7 +303,7 @@ namespace revit_mcp_plugin.Panel
             if (parentTransform != null && !parentTransform.IsIdentity)
                 linkTransform = parentTransform.Multiply(linkTransform);
 
-            long hostElementId = linkInstance.Id.Value;
+            long hostElementId = PanelElementIds.GetValue(linkInstance.Id);
             string linkName = linkInstance.Name ?? string.Empty;
             string linkCategoryName = linkInstance.Category?.Name ?? "Revit Link";
 

@@ -48,7 +48,7 @@ namespace revit_mcp_plugin.Panel
 
                     uiDoc.Selection.SetElementIds(new System.Collections.Generic.List<Autodesk.Revit.DB.ElementId>
                     {
-                        new Autodesk.Revit.DB.ElementId(elementId),
+                        PanelElementIds.Create(elementId),
                     });
 
                     PanelBridge.CompletePick(elementId);
