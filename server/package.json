@@ -1,6 +1,6 @@
 {
     "name": "@jesselei1102-hue/revit-mcp-server-apps",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "description": "MCP server + MCP Apps for Autodesk Revit (fork of mcp-server-for-revit with schedule UI)",
     "main": "index.js",
     "type": "module",

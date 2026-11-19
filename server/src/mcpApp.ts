@@ -312,6 +312,7 @@ async function loadScheduleData(args: {
     | "EditableInstanceParameters";
   specificParameterNames?: string[];
   includeLinkedModels?: boolean;
+  elementIds?: number[];
 }) {
   // 0 / omitted = load every match (UI filters then run on the full set).
   const limit =
@@ -319,23 +320,32 @@ async function loadScheduleData(args: {
 
   const includeLinkedModels = args.includeLinkedModels !== false;
   const categories = args.categories?.length ? args.categories : DEFAULT_MODEL_CATEGORIES;
+  // Explicit IDs (e.g. from a GBP audit run) bypass the category query entirely.
+  const explicitIds = Array.from(
+    new Set((args.elementIds ?? []).map((id) => Number(id)).filter((id) => Number.isFinite(id)))
+  );
+  const queryPromise = explicitIds.length
+    ? Promise.resolve(null)
+    : withRevitConnection((client) =>
+        client.sendCommand("query_model", {
+          input: {
+            searchScope: args.searchScope ?? "AllViews",
+            elementInclusionMode: "InstancesOnly",
+            categories,
+            maxResults: 0,
+            includeLinkedModels,
+          },
+        })
+      );
   const [levelLabels, query, dashboard] = await Promise.all([
     loadLevelLabels(includeLinkedModels),
-    withRevitConnection((client) =>
-      client.sendCommand("query_model", {
-        input: {
-          searchScope: args.searchScope ?? "AllViews",
-          elementInclusionMode: "InstancesOnly",
-          categories,
-          maxResults: 0,
-          includeLinkedModels,
-        },
-      })
-    ),
+    queryPromise,
     loadDashboardStats(),
   ]);
 
-  const allRefs = collectRefs(query);
+  const allRefs = explicitIds.length
+    ? explicitIds.map((elementId) => ({ elementId, linkInstanceId: null, linkName: null }))
+    : collectRefs(query);
   const refs = limit > 0 ? allRefs.slice(0, limit) : allRefs;
   if (refs.length === 0) {
     return {
@@ -392,7 +402,9 @@ async function loadScheduleData(args: {
   const baseMessage =
     typeof queryRoot?.message === "string" && queryRoot.message
       ? String(queryRoot.message)
-      : null;
+      : explicitIds.length
+        ? `Loaded ${refs.length} audit element${refs.length === 1 ? "" : "s"} by ID.`
+        : null;
   return {
     ...table,
     matchedCount: refs.length,
@@ -418,8 +430,14 @@ export async function registerMcpApp(server: McpServer) {
     {
       title: "MCP Apps · Revit Schedule",
       description:
-        "[MCP Apps] Loads host + loaded linked-model instances into a filterable editable report (default model categories, no row cap by default). Default parametersOutputType is EditableInstanceParameters (writable instance params; excludes Area/Volume). Linked rows are read-only for edits.",
+        "[MCP Apps] Loads host + loaded linked-model instances into a filterable editable report. Pass elementIds to load a specific audit/check batch; otherwise loads default model categories (no row cap by default). Default parametersOutputType is EditableInstanceParameters (writable instance params; excludes Area/Volume). Linked rows are read-only for edits.",
       inputSchema: {
+        elementIds: z
+          .array(z.number())
+          .optional()
+          .describe(
+            "Explicit Revit element IDs to load (e.g. from a GBP audit run). When set, categories/searchScope are ignored and only these elements are shown."
+          ),
         categories: z
           .array(z.string())
           .optional()
