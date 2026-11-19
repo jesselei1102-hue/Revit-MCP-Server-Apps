@@ -62,6 +62,7 @@
     </PropertyGroup>
     <ItemGroup>
         <PackageReference Include="Microsoft.CSharp" Version="4.7.0"/>
+        <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35"/>
         <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="$(RevitVersion).*"/>
         <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="$(RevitVersion).*"/>
         <PackageReference Include="RevitMCPSDK" Version="$(RevitVersion).*"/>
@@ -83,20 +84,33 @@
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </None>
     </ItemGroup>
+    <ItemGroup>
+        <!-- Panel View static assets, copied next to the add-in DLL -->
+        <None Include="Panel\panel-view\**\*.*" Exclude="Panel\panel-view\tmp\**\*.*">
+            <Link>panel-view\%(RecursiveDir)%(FileName)%(Extension)</Link>
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
     <Target Name="CopyFiles" AfterTargets="CoreBuild">
         <ItemGroup>
             <RootItem Include="$(ProjectDir)*.addin"/>
             <AddinItem Include="$(TargetDir)*.dll"/>
             <AddinItem Include="$(TargetDir)*.pdb"/>
+            <PanelAsset Include="$(TargetDir)panel-view\**\*.*"/>
+            <WebView2Loader Include="$(TargetDir)runtimes\win-x64\native\WebView2Loader.dll"
+                             Condition="Exists('$(TargetDir)runtimes\win-x64\native\WebView2Loader.dll')"/>
         </ItemGroup>
 
         <PropertyGroup>
             <RootDir>bin\AddIn $(RevitVersion) $(Configuration)\</RootDir>
-            <AddinDir>$(RootDir)$(RootNameSpace)\</AddinDir>
+            <AddinDir>$(RootDir)$(RootNamespace)\</AddinDir>
         </PropertyGroup>
 
         <Copy SourceFiles="@(RootItem)" DestinationFolder="$(RootDir)"/>
         <Copy SourceFiles="@(AddinItem)" DestinationFolder="$(AddinDir)"/>
+        <Copy SourceFiles="@(PanelAsset)" DestinationFolder="$(AddinDir)panel-view\%(RecursiveDir)"/>
+        <!-- Revit does not run NuGet runtime resolution; the native WebView2 loader must sit next to the managed DLLs -->
+        <Copy SourceFiles="@(WebView2Loader)" DestinationFolder="$(AddinDir)"/>
 
         <ItemGroup>
             <AddinFiles Include="$(RootDir)**\*.*"/>

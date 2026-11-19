@@ -20,7 +20,7 @@ namespace revit_mcp_plugin.Core
         private TcpListener _listener;
         private Thread _listenerThread;
         private bool _isRunning;
-        private int _port = 8080;
+        private int _port = revit_mcp_plugin.Panel.PanelBuildInfo.SocketPort;
         private UIApplication _uiApp;
         private ICommandRegistry _commandRegistry;
         private ILogger _logger;
@@ -84,13 +84,16 @@ namespace revit_mcp_plugin.Core
             //{
             //    _port = configManager.Config.Settings.Port;
             //}
-            _port = 8080; // 固定端口号 - Hard-wired port number.
+            _port = revit_mcp_plugin.Panel.PanelBuildInfo.SocketPort;
 
             // 加载命令
             // Load command.
             CommandManager commandManager = new CommandManager(
                 _commandRegistry, _logger, configManager, _uiApp);
             commandManager.LoadCommands();
+
+            // Panel commands are registered in-process (Agent Canvas).
+            Panel.PanelCommandFactory.Register(_commandRegistry, _uiApp);
 
             _logger.Info($"Socket service initialized on port {_port}");
         }

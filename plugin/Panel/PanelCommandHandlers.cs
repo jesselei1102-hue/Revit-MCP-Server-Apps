@@ -1,0 +1,227 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Threading;
+using Autodesk.Revit.DB;
+using Autodesk.Revit.UI;
+using Newtonsoft.Json.Linq;
+
+namespace revit_mcp_plugin.Panel
+{
+    /// <summary>
+    /// In-process implementation behind <c>panel_show_geometry</c>. Runs on the Revit UI thread.
+    /// </summary>
+    internal class PanelShowGeometryEventHandler : IExternalEventHandler
+    {
+        private readonly ManualResetEvent _resetEvent = new(false);
+        private List<long> _elementIds;
+        private bool _selectedOnly;
+
+        public object Result { get; private set; }
+
+        public void SetParameters(JArray elementIds, bool selectedOnly)
+        {
+            _elementIds = new List<long>();
+            if (elementIds != null)
+            {
+                foreach (JToken token in elementIds)
+                {
+                    if (token.Type == JTokenType.Integer && token.Value<long>() > 0)
+                        _elementIds.Add(token.Value<long>());
+                    else if (long.TryParse(token.ToString(), out long parsed) && parsed > 0)
+                        _elementIds.Add(parsed);
+                }
+            }
+
+            _selectedOnly = selectedOnly;
+            Result = null;
+            _resetEvent.Reset();
+        }
+
+        public void Execute(UIApplication app)
+        {
+            try
+            {
+                UIDocument uiDoc = app.ActiveUIDocument
+                    ?? throw new InvalidOperationException("No active document");
+                Document doc = uiDoc.Document;
+
+                List<long> ids = _elementIds ?? new List<long>();
+                if (ids.Count == 0 && _selectedOnly)
+                {
+                    foreach (ElementId id in uiDoc.Selection.GetElementIds())
+                    {
+                        if (id != null && id.Value > 0)
+                            ids.Add(id.Value);
+                    }
+                }
+
+                IList<Element> targets = PanelMeshExtractor.ResolveTargets(
+                    doc,
+                    doc.ActiveView,
+                    ids.Count > 0 ? ids : null);
+
+                PanelMeshResult extraction = PanelMeshExtractor.Extract(doc, targets);
+                PanelBridge.SetActiveDocument(doc);
+
+                if (extraction.Elements.Count == 0)
+                {
+                    Result = new
+                    {
+                        ok = false,
+                        error = "no_geometry",
+                        message = "No extractable geometry found for the requested elements.",
+                        elementCount = 0,
+                        totalVertices = 0,
+                        totalIndices = 0,
+                        truncated = extraction.Truncated,
+                        skippedElements = extraction.SkippedElements,
+                    };
+                    return;
+                }
+
+                PanelGeometrySummary summary = PanelMeshPayloadWriter.Write(
+                    PanelService.Instance.PanelTmpFolder,
+                    extraction);
+
+                PanelBridge.ClearError();
+                PanelBridge.PostGeometryReady(summary);
+
+                Result = new
+                {
+                    ok = true,
+                    elementCount = summary.ElementCount,
+                    totalVertices = summary.TotalVertices,
+                    totalIndices = summary.TotalIndices,
+                    truncated = summary.Truncated,
+                    skippedElements = summary.SkippedElements,
+                };
+            }
+            catch (Exception ex)
+            {
+                PanelBridge.SetError(ex.Message);
+                Result = new { ok = false, error = "panel_show_geometry_failed", message = ex.Message };
+            }
+            finally
+            {
+                _resetEvent.Set();
+            }
+        }
+
+        public bool WaitForCompletion(int timeoutMilliseconds) => _resetEvent.WaitOne(timeoutMilliseconds);
+
+        public string GetName() => "MCP Agent Canvas show geometry";
+    }
+
+    internal class PanelSetAnalysisEventHandler : IExternalEventHandler
+    {
+        private readonly ManualResetEvent _resetEvent = new(false);
+        private List<PanelAnalysisItem> _items = new();
+
+        public object Result { get; private set; }
+
+        public void SetItems(IList<PanelAnalysisItem> items)
+        {
+            _items = items != null ? new List<PanelAnalysisItem>(items) : new List<PanelAnalysisItem>();
+            Result = null;
+            _resetEvent.Reset();
+        }
+
+        public void Execute(UIApplication app)
+        {
+            try
+            {
+                PanelBridge.PostSetAnalysis(_items);
+                Result = new { ok = true, applied = _items.Count };
+            }
+            catch (Exception ex)
+            {
+                PanelBridge.SetError(ex.Message);
+                Result = new { ok = false, error = "panel_set_analysis_failed", message = ex.Message };
+            }
+            finally
+            {
+                _resetEvent.Set();
+            }
+        }
+
+        public bool WaitForCompletion(int timeoutMilliseconds) => _resetEvent.WaitOne(timeoutMilliseconds);
+
+        public string GetName() => "MCP Agent Canvas set analysis";
+    }
+
+    internal class PanelFitEventHandler : IExternalEventHandler
+    {
+        private readonly ManualResetEvent _resetEvent = new(false);
+
+        public object Result { get; private set; }
+
+        public void Reset()
+        {
+            Result = null;
+            _resetEvent.Reset();
+        }
+
+        public void Execute(UIApplication app)
+        {
+            try
+            {
+                PanelBridge.PostFit();
+                Result = new { ok = true };
+            }
+            catch (Exception ex)
+            {
+                PanelBridge.SetError(ex.Message);
+                Result = new { ok = false, error = "panel_fit_failed", message = ex.Message };
+            }
+            finally
+            {
+                _resetEvent.Set();
+            }
+        }
+
+        public bool WaitForCompletion(int timeoutMilliseconds) => _resetEvent.WaitOne(timeoutMilliseconds);
+
+        public string GetName() => "MCP Agent Canvas fit";
+    }
+
+    internal class PanelClearEventHandler : IExternalEventHandler
+    {
+        private readonly ManualResetEvent _resetEvent = new(false);
+        private string _target = "all";
+
+        public object Result { get; private set; }
+
+        public void SetTarget(string target)
+        {
+            _target = string.IsNullOrWhiteSpace(target) ? "all" : target.Trim().ToLowerInvariant();
+            Result = null;
+            _resetEvent.Reset();
+        }
+
+        public void Execute(UIApplication app)
+        {
+            try
+            {
+                int deleted = 0;
+                if (_target == "model" || _target == "all")
+                    deleted = PanelMeshPayloadWriter.CleanOldGeometry(PanelService.Instance.PanelTmpFolder, keep: null);
+
+                PanelBridge.PostClear(_target);
+                Result = new { ok = true, target = _target, deletedTmpFiles = deleted };
+            }
+            catch (Exception ex)
+            {
+                PanelBridge.SetError(ex.Message);
+                Result = new { ok = false, error = "panel_clear_failed", message = ex.Message };
+            }
+            finally
+            {
+                _resetEvent.Set();
+            }
+        }
+
+        public bool WaitForCompletion(int timeoutMilliseconds) => _resetEvent.WaitOne(timeoutMilliseconds);
+
+        public string GetName() => "MCP Agent Canvas clear";
+    }
+}

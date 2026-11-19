@@ -77,10 +77,11 @@ namespace revit_mcp_plugin.Core
 
         private static BitmapSource LoadResource(string fileName)
         {
+            string prefix = "/" + Assembly.GetExecutingAssembly().GetName().Name;
             var image = new BitmapImage();
             image.BeginInit();
             image.UriSource = new Uri(
-                "/RevitMCPPlugin;component/Core/Ressources/" + fileName,
+                prefix + ";component/Core/Ressources/" + fileName,
                 UriKind.RelativeOrAbsolute);
             image.CacheOption = BitmapCacheOption.OnLoad;
             image.EndInit();

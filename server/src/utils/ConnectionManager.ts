@@ -9,6 +9,11 @@ let connectionMutex: Promise<void> = Promise.resolve();
  * @param operation 连接成功后要执行的操作函数
  * @returns 操作的结果
  */
+const revitPort = Number(process.env.REVIT_MCP_PORT ?? 8080);
+if (!Number.isInteger(revitPort) || revitPort <= 0) {
+  throw new Error(`Invalid REVIT_MCP_PORT: ${process.env.REVIT_MCP_PORT}`);
+}
+
 export async function withRevitConnection<T>(
   operation: (client: RevitClientConnection) => Promise<T>
 ): Promise<T> {
@@ -20,7 +25,7 @@ export async function withRevitConnection<T>(
   });
   await previousMutex;
 
-  const revitClient = new RevitClientConnection("localhost", 8080);
+  const revitClient = new RevitClientConnection("localhost", revitPort);
 
   try {
     // 连接到Revit客户端
