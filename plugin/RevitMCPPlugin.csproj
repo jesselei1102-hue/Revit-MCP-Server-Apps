@@ -69,7 +69,8 @@
     </PropertyGroup>
     <ItemGroup>
         <PackageReference Include="Microsoft.CSharp" Version="4.7.0"/>
-        <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35"/>
+        <!-- Match Revit 2027's preloaded WebView2 (1.0.2478.35) — mismatched versions crash on nested iframes. -->
+        <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2478.35"/>
         <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="$(RevitVersion).*"/>
         <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="$(RevitVersion).*"/>
         <PackageReference Include="RevitMCPSDK" Version="$(RevitVersion).*"/>

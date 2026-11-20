@@ -31,9 +31,12 @@ namespace revit_mcp_plugin.Panel
             {
                 new PanelShowGeometryCommand(uiApp),
                 new PanelSetAnalysisCommand(uiApp),
+                new PanelShowReportCommand(uiApp),
+                new PanelSetViewCommand(uiApp),
                 new PanelFitCommand(uiApp),
                 new PanelClearCommand(uiApp),
                 new PanelStatusCommand(uiApp),
+                new PanelGetAgentInstructionCommand(uiApp),
                 new PanelPickCommand(uiApp),
                 new PanelCaptureCommand(uiApp),
             };
@@ -134,6 +137,58 @@ namespace revit_mcp_plugin.Panel
     {
     }
 
+    internal sealed class PanelShowReportCommand : ExternalEventCommandBase
+    {
+        private WaitablePanelShowReportHandler HandlerInstance => (WaitablePanelShowReportHandler)Handler;
+
+        public PanelShowReportCommand(UIApplication uiApp)
+            : base(new WaitablePanelShowReportHandler(), uiApp)
+        {
+        }
+
+        public override string CommandName => "panel_show_report";
+
+        public override object Execute(JObject parameters, string requestId)
+        {
+            JObject report = parameters?["report"] as JObject ?? parameters;
+            bool switchView = parameters?["switchView"]?.Value<bool?>() ?? true;
+            HandlerInstance.SetReport(report, switchView);
+            if (!RaiseAndWaitForCompletion(10000))
+                throw CreateTimeoutException(CommandName);
+
+            return HandlerInstance.Result;
+        }
+    }
+
+    internal sealed class WaitablePanelShowReportHandler : PanelShowReportEventHandler, IWaitableExternalEventHandler
+    {
+    }
+
+    internal sealed class PanelSetViewCommand : ExternalEventCommandBase
+    {
+        private WaitablePanelSetViewHandler HandlerInstance => (WaitablePanelSetViewHandler)Handler;
+
+        public PanelSetViewCommand(UIApplication uiApp)
+            : base(new WaitablePanelSetViewHandler(), uiApp)
+        {
+        }
+
+        public override string CommandName => "panel_set_view";
+
+        public override object Execute(JObject parameters, string requestId)
+        {
+            HandlerInstance.SetView(parameters?.Value<string>("view"));
+            if (!RaiseAndWaitForCompletion(10000))
+                throw CreateTimeoutException(CommandName);
+
+            return HandlerInstance.Result;
+        }
+    }
+
+    internal sealed class WaitablePanelSetViewHandler : PanelSetViewEventHandler, IWaitableExternalEventHandler
+    {
+    }
+
     internal sealed class PanelFitCommand : ExternalEventCommandBase
     {
         private WaitablePanelFitHandler HandlerInstance => (WaitablePanelFitHandler)Handler;
@@ -201,6 +256,25 @@ namespace revit_mcp_plugin.Panel
                 throw CreateTimeoutException(CommandName);
 
             return HandlerInstance.Result;
+        }
+    }
+
+    /// <summary>
+    /// Claim the instruction queued by GBP Audit / Schedule "send to agent" inside Agent Canvas.
+    /// Runs on the socket thread (no ExternalEvent) — state lives only in PanelBridge.
+    /// </summary>
+    internal sealed class PanelGetAgentInstructionCommand : IRevitCommand
+    {
+        public PanelGetAgentInstructionCommand(UIApplication uiApp)
+        {
+        }
+
+        public string CommandName => "panel_get_agent_instruction";
+
+        public object Execute(JObject parameters, string requestId)
+        {
+            bool clear = parameters?.Value<bool?>("clear") ?? true;
+            return PanelBridge.ClaimPendingAgentInstruction(clear);
         }
     }
 

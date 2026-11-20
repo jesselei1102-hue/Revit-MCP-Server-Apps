@@ -20,10 +20,19 @@ namespace revit_mcp_plugin.Panel
 
         public static PanelGeometrySummary LastGeometry { get; private set; }
         public static List<PanelAnalysisItem> LastAnalysis { get; private set; } = new();
+        public static JObject LastReport { get; private set; }
+        public static string ActiveView { get; private set; } = "model";
         public static long? LastPickElementId { get; private set; }
         public static DateTime? LastPickAtUtc { get; private set; }
         public static string LastError { get; private set; }
         public static string LastGeometryToken { get; private set; }
+
+        /// <summary>
+        /// Instruction posted by an embedded MCP App (GBP Run / Schedule) for the Cursor agent to claim.
+        /// </summary>
+        public static string PendingAgentInstruction { get; private set; }
+        public static string PendingAgentInstructionSource { get; private set; }
+        public static DateTime? PendingAgentInstructionAtUtc { get; private set; }
 
         // Source document of the currently loaded mesh, recorded at extraction time.
         // Used by PanelDocumentSync to ignore DocumentChanged events for other open documents.
@@ -138,12 +147,73 @@ namespace revit_mcp_plugin.Panel
                 LastAnalysis = new List<PanelAnalysisItem>();
             }
 
+            if (string.Equals(target, "report", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(target, "all", StringComparison.OrdinalIgnoreCase))
+            {
+                LastReport = null;
+            }
+
             PostToJs("clear", new { target = target ?? "all" });
         }
 
         public static void PostFit()
         {
             PostToJs("fit", new { });
+        }
+
+        /// <summary>
+        /// Push a structured Ultraviolet report into the Agent Canvas Report pane.
+        /// Payload is JSON only (no mesh); html fragments are optional and capped by the MCP tool.
+        /// </summary>
+        public static object PostSetReport(JObject report, bool switchView = true)
+        {
+            // Static report presentation on the main WebView (not the Schedule MCP App surface).
+            if (switchView)
+            {
+                ActiveView = "report";
+                PanelService.Instance.SetSurface("report");
+            }
+
+            if (report == null)
+            {
+                LastReport = null;
+                PostToJs("set_report", new { report = (object)null, switchView });
+                return new { ok = true, empty = true, view = switchView ? "report" : ActiveView, mode = "static" };
+            }
+
+            LastReport = (JObject)report.DeepClone();
+            PostToJs("set_report", new { report = LastReport, switchView });
+            return new
+            {
+                ok = true,
+                empty = false,
+                view = ActiveView,
+                mode = "static",
+                title = LastReport.Value<string>("title"),
+                kind = LastReport.Value<string>("kind") ?? LastReport.Value<string>("type"),
+            };
+        }
+
+        public static object PostSetView(string view)
+        {
+            string raw = (view ?? "model").Trim().ToLowerInvariant();
+            // Agent Canvas hosts Model + Dynamic Report only. Schedule/GBP stay in Cursor MCP Apps.
+            if (raw == "schedule" || raw == "gbp")
+            {
+                return new
+                {
+                    ok = false,
+                    error = "view_not_in_panel",
+                    message = "Agent Canvas only hosts model and report. Use the Schedule / GBP MCP Apps in Cursor chat.",
+                    view = ActiveView,
+                };
+            }
+
+            string next = raw == "report" ? "report" : "model";
+            ActiveView = next;
+            PanelService.Instance.SetSurface(next);
+            PostToJs("set_view", new { view = next });
+            return new { ok = true, view = next, mode = "static", surface = "main" };
         }
 
         /// <summary>
@@ -287,7 +357,12 @@ namespace revit_mcp_plugin.Panel
                 return new
                 {
                     ready = PanelService.Instance.WebViewReady,
-                    view = "model",
+                    view = ActiveView ?? "model",
+                    mode = string.IsNullOrEmpty(PanelService.Instance.ActiveApp)
+                        ? "static"
+                        : PanelService.Instance.ActiveApp,
+                    surface = "main",
+                    appReady = false,
                     elementCount = LastGeometry?.ElementCount ?? 0,
                     totalVertices = LastGeometry?.TotalVertices ?? 0,
                     totalIndices = LastGeometry?.TotalIndices ?? 0,
@@ -296,6 +371,19 @@ namespace revit_mcp_plugin.Panel
                     lastPick = LastPickElementId,
                     lastPickAtUtc = LastPickAtUtc,
                     lastError = LastError,
+                    report = LastReport == null ? null : new
+                    {
+                        title = LastReport.Value<string>("title"),
+                        kind = LastReport.Value<string>("kind") ?? LastReport.Value<string>("type"),
+                        hasContent = true,
+                    },
+                    pendingAgentInstruction = string.IsNullOrEmpty(PendingAgentInstruction) ? null : new
+                    {
+                        text = PendingAgentInstruction,
+                        source = PendingAgentInstructionSource,
+                        atUtc = PendingAgentInstructionAtUtc,
+                        hint = "Call panel_get_agent_instruction to claim and clear this text, then follow it.",
+                    },
                     lastUserCapture = _lastUserCapture == null ? null : new
                     {
                         ok = _lastUserCapture.Ok,
@@ -349,6 +437,61 @@ namespace revit_mcp_plugin.Panel
 
         public static void SetError(string error) => LastError = error;
 
+        public static void SetPendingAgentInstruction(string text, string source)
+        {
+            lock (Sync)
+            {
+                PendingAgentInstruction = string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+                PendingAgentInstructionSource = string.IsNullOrWhiteSpace(source) ? null : source.Trim();
+                PendingAgentInstructionAtUtc = string.IsNullOrEmpty(PendingAgentInstruction)
+                    ? (DateTime?)null
+                    : DateTime.UtcNow;
+            }
+
+            if (!string.IsNullOrEmpty(PendingAgentInstruction))
+            {
+                PanelService.Instance.WritePanelLog(
+                    "agent_instruction queued source=" + (PendingAgentInstructionSource ?? "?")
+                    + " chars=" + PendingAgentInstruction.Length);
+            }
+        }
+
+        public static object ClaimPendingAgentInstruction(bool clear = true)
+        {
+            lock (Sync)
+            {
+                if (string.IsNullOrEmpty(PendingAgentInstruction))
+                {
+                    return new
+                    {
+                        ok = true,
+                        empty = true,
+                        message = "No pending agent instruction. Click Run in the GBP Audit (or Schedule) tab first.",
+                    };
+                }
+
+                var result = new
+                {
+                    ok = true,
+                    empty = false,
+                    text = PendingAgentInstruction,
+                    source = PendingAgentInstructionSource,
+                    atUtc = PendingAgentInstructionAtUtc,
+                    cleared = clear,
+                };
+
+                if (clear)
+                {
+                    PendingAgentInstruction = null;
+                    PendingAgentInstructionSource = null;
+                    PendingAgentInstructionAtUtc = null;
+                    PostToJs("agent_instruction_cleared", new { ok = true });
+                }
+
+                return result;
+            }
+        }
+
         public static void HandleJsMessage(string json)
         {
             if (string.IsNullOrWhiteSpace(json))
@@ -397,6 +540,45 @@ namespace revit_mcp_plugin.Panel
                     break;
                 case "capture_result":
                     CompleteCapture(payload ?? message);
+                    break;
+                case "view_changed":
+                    {
+                        string view = (payload?.Value<string>("view") ?? message.Value<string>("view") ?? "model")
+                            .Trim()
+                            .ToLowerInvariant();
+                        ActiveView = view == "report" ? "report" : "model";
+                        if (view == "model" || view == "report")
+                            PanelService.Instance.SetSurface(view);
+                        PanelService.Instance.WritePanelLog("panel_view=" + ActiveView);
+                    }
+                    break;
+                case "app_tools_call":
+                    {
+                        string requestId = payload?.Value<string>("requestId") ?? message.Value<string>("requestId");
+                        string toolName = payload?.Value<string>("name") ?? message.Value<string>("name");
+                        JObject args = payload?["arguments"] as JObject
+                            ?? message["arguments"] as JObject
+                            ?? new JObject();
+                        ThreadPool.QueueUserWorkItem(_ =>
+                        {
+                            try
+                            {
+                                object result = PanelAppToolRouter.Invoke(toolName, args);
+                                PostToJs("app_tools_result", new { requestId, ok = true, result });
+                            }
+                            catch (Exception ex)
+                            {
+                                PostToJs("app_tools_result", new { requestId, ok = false, error = ex.Message });
+                            }
+                        });
+                    }
+                    break;
+                case "agent_instruction":
+                    {
+                        string text = payload?.Value<string>("text") ?? message.Value<string>("text");
+                        string source = payload?.Value<string>("source") ?? message.Value<string>("source");
+                        SetPendingAgentInstruction(text, source);
+                    }
                     break;
                 default:
                     PanelService.Instance.WritePanelLog("panel_js_unknown_type: " + type);

@@ -36,17 +36,42 @@ namespace revit_mcp_plugin.Core
             PushButton toggleButton = mcpPanel.AddItem(toggleData) as PushButton;
             McpToggleButton.Initialize(toggleButton);
 
-            PushButtonData panelData = new PushButtonData(
+            // One dockable panel: Model (3D) + Dynamic Report. Schedule/GBP stay in Cursor MCP Apps.
+            PushButtonData modelData = new PushButtonData(
+                "ID_EXCMD_MCP_PANEL_MODEL",
+                "Model",
+                assemblyPath,
+                "revit_mcp_plugin.Panel.ShowModelViewCommand");
+            modelData.ToolTip = "Open Agent Canvas on the Model (3D) view.";
+            modelData.LongDescription = "Shows the Agent Canvas panel and switches to the 3D model view.";
+            modelData.AvailabilityClassName = Availability;
+            modelData.Image = new BitmapImage(new Uri(resourcePrefix + ";component/Core/Ressources/panel-16.png", UriKind.RelativeOrAbsolute));
+            modelData.LargeImage = new BitmapImage(new Uri(resourcePrefix + ";component/Core/Ressources/panel-32.png", UriKind.RelativeOrAbsolute));
+
+            PushButtonData reportData = new PushButtonData(
+                "ID_EXCMD_MCP_PANEL_REPORT",
+                "Report",
+                assemblyPath,
+                "revit_mcp_plugin.Panel.ShowReportViewCommand");
+            reportData.ToolTip = "Open Dynamic Report (panel_show_report).";
+            reportData.LongDescription = "Agent-pushed tables and summaries in the Agent Canvas panel.";
+            reportData.AvailabilityClassName = Availability;
+            reportData.Image = new BitmapImage(new Uri(resourcePrefix + ";component/Core/Ressources/panel-16.png", UriKind.RelativeOrAbsolute));
+            reportData.LargeImage = new BitmapImage(new Uri(resourcePrefix + ";component/Core/Ressources/panel-32.png", UriKind.RelativeOrAbsolute));
+
+            PushButtonData hideData = new PushButtonData(
                 RibbonButtonId,
-                "Panel",
+                "Hide\r\nPanel",
                 assemblyPath,
                 "revit_mcp_plugin.Panel.TogglePanelCommand");
-            panelData.ToolTip = "Show or hide the Agent Canvas panel.";
-            panelData.LongDescription = "Dockable WebView2 canvas used by the agent to render 3D scenes and rich content inside Revit.";
-            panelData.AvailabilityClassName = Availability;
-            panelData.Image = new BitmapImage(new Uri(resourcePrefix + ";component/Core/Ressources/panel-16.png", UriKind.RelativeOrAbsolute));
-            panelData.LargeImage = new BitmapImage(new Uri(resourcePrefix + ";component/Core/Ressources/panel-32.png", UriKind.RelativeOrAbsolute));
-            mcpPanel.AddItem(panelData);
+            hideData.ToolTip = "Show or hide the Agent Canvas panel.";
+            hideData.AvailabilityClassName = Availability;
+            hideData.Image = new BitmapImage(new Uri(resourcePrefix + ";component/Core/Ressources/panel-16.png", UriKind.RelativeOrAbsolute));
+            hideData.LargeImage = new BitmapImage(new Uri(resourcePrefix + ";component/Core/Ressources/panel-32.png", UriKind.RelativeOrAbsolute));
+
+            mcpPanel.AddItem(modelData);
+            mcpPanel.AddItem(reportData);
+            mcpPanel.AddItem(hideData);
 
             PushButtonData settingsData = new PushButtonData(
                 SettingsId,

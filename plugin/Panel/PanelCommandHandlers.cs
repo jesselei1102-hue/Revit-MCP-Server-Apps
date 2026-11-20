@@ -164,6 +164,80 @@ namespace revit_mcp_plugin.Panel
         public string GetName() => "MCP Agent Canvas set analysis";
     }
 
+    internal class PanelShowReportEventHandler : IExternalEventHandler
+    {
+        private readonly ManualResetEvent _resetEvent = new(false);
+        private JObject _report;
+        private bool _switchView = true;
+
+        public object Result { get; private set; }
+
+        public void SetReport(JObject report, bool switchView)
+        {
+            _report = report;
+            _switchView = switchView;
+            Result = null;
+            _resetEvent.Reset();
+        }
+
+        public void Execute(UIApplication app)
+        {
+            try
+            {
+                Result = PanelBridge.PostSetReport(_report, _switchView);
+            }
+            catch (Exception ex)
+            {
+                PanelBridge.SetError(ex.Message);
+                Result = new { ok = false, error = "panel_show_report_failed", message = ex.Message };
+            }
+            finally
+            {
+                _resetEvent.Set();
+            }
+        }
+
+        public bool WaitForCompletion(int timeoutMilliseconds) => _resetEvent.WaitOne(timeoutMilliseconds);
+
+        public string GetName() => "MCP Agent Canvas show report";
+    }
+
+    internal class PanelSetViewEventHandler : IExternalEventHandler
+    {
+        private readonly ManualResetEvent _resetEvent = new(false);
+        private string _view = "model";
+
+        public object Result { get; private set; }
+
+        public void SetView(string view)
+        {
+            _view = view;
+            Result = null;
+            _resetEvent.Reset();
+        }
+
+        public void Execute(UIApplication app)
+        {
+            try
+            {
+                Result = PanelBridge.PostSetView(_view);
+            }
+            catch (Exception ex)
+            {
+                PanelBridge.SetError(ex.Message);
+                Result = new { ok = false, error = "panel_set_view_failed", message = ex.Message };
+            }
+            finally
+            {
+                _resetEvent.Set();
+            }
+        }
+
+        public bool WaitForCompletion(int timeoutMilliseconds) => _resetEvent.WaitOne(timeoutMilliseconds);
+
+        public string GetName() => "MCP Agent Canvas set view";
+    }
+
     internal class PanelFitEventHandler : IExternalEventHandler
     {
         private readonly ManualResetEvent _resetEvent = new(false);

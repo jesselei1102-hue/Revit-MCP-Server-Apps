@@ -70,6 +70,28 @@ namespace revit_mcp_plugin.Panel
             return false;
         }
 
+        /// <summary>
+        /// Closed room/space/area solids should stay translucent in the canvas or they occlude the model.
+        /// </summary>
+        private static bool IsLikelyVolumeElement(Element element)
+        {
+            if (element == null)
+                return false;
+
+            string cat = element.Category?.Name ?? string.Empty;
+            if (string.Equals(cat, "Rooms", StringComparison.OrdinalIgnoreCase)) return true;
+            if (string.Equals(cat, "Spaces", StringComparison.OrdinalIgnoreCase)) return true;
+            if (string.Equals(cat, "Areas", StringComparison.OrdinalIgnoreCase)) return true;
+            if (cat.IndexOf("tag", StringComparison.OrdinalIgnoreCase) >= 0) return false;
+            if (cat.IndexOf("separat", StringComparison.OrdinalIgnoreCase) >= 0) return false;
+            if (cat.IndexOf("Room", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (cat.IndexOf("Space", StringComparison.OrdinalIgnoreCase) >= 0
+                && cat.IndexOf("Type", StringComparison.OrdinalIgnoreCase) < 0
+                && cat.IndexOf("Setting", StringComparison.OrdinalIgnoreCase) < 0)
+                return true;
+            return false;
+        }
+
         // Max batch was raised; SupportedCategories is no longer used in full-view mode (kept for reference).
 
         /// <summary>
@@ -422,7 +444,8 @@ namespace revit_mcp_plugin.Panel
                 Name = elementName ?? string.Empty,
                 Category = categoryName,
             };
-            info.IsGlazed = IsLikelyGlazedElement(element);
+            // Volumes reuse IsGlazed in the payload so older panel pages still treat them as translucent.
+            info.IsGlazed = IsLikelyGlazedElement(element) || IsLikelyVolumeElement(element);
 
             int baseVertex = (int)result.TotalVertices;
             long baseIndex = result.TotalIndices;

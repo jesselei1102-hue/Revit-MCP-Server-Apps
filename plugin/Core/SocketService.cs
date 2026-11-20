@@ -50,6 +50,24 @@ namespace revit_mcp_plugin.Core
             set => _port = value;
         }
 
+        /// <summary>
+        /// In-process command dispatch for Agent Canvas embedded apps (Schedule / GBP).
+        /// Must not be called from the Revit UI thread when the command waits on ExternalEvent.
+        /// </summary>
+        public object ExecuteMethod(string method, JObject parameters)
+        {
+            if (string.IsNullOrWhiteSpace(method))
+                throw new ArgumentException("method is required", nameof(method));
+            if (_commandRegistry == null)
+                throw new InvalidOperationException("Socket service is not initialized.");
+
+            if (!_commandRegistry.TryGetCommand(method, out var command))
+                throw new InvalidOperationException("Method '" + method + "' not found");
+
+            string requestId = "panel-app-" + Guid.NewGuid().ToString("N");
+            return command.Execute(parameters ?? new JObject(), requestId);
+        }
+
         // 初始化
         // Initialization.
         public void Initialize(UIApplication uiApp)

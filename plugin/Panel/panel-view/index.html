@@ -2,13 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>MCP Agent Canvas — Model</title>
+<title>MCP Agent Canvas</title>
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'unsafe-inline' https://panel.local; connect-src https://panel.local; style-src 'unsafe-inline'; img-src data:;" />
+      content="default-src 'none'; script-src 'unsafe-inline' https://panel.local; connect-src https://panel.local; style-src 'unsafe-inline' https://panel.local; img-src data: https://panel.local; font-src https://panel.local data:; frame-src https://panel.local; worker-src 'none';" />
+<link rel="stylesheet" href="https://panel.local/theme/fonts.css" />
+<link rel="stylesheet" href="https://panel.local/theme/scoped-tokens.css" />
+<link rel="stylesheet" href="https://panel.local/report.css" />
 <style>
   html, body { height: 100%; margin: 0; background: #101014; color: #e6e6e9;
-               font: 12px/1.5 "Segoe UI", system-ui, sans-serif; overflow: hidden; }
-  #scene { position: absolute; inset: 0; }
+               font: 12px/1.5 "Segoe UI", system-ui, sans-serif; overflow: hidden;
+               display: flex; flex-direction: column; }
   canvas { display: block; }
   .hud {
       position: absolute; left: 10px; top: 10px; padding: 8px 10px; border-radius: 8px;
@@ -34,6 +37,7 @@
   .hud-btn:hover { border-color: #3f6a85; background: rgba(90, 214, 255, .10); color: #dff3ff; }
   .hud-btn:disabled { opacity: .45; cursor: default; }
   .hud-btn.primary { border-color: #3f6a85; background: rgba(90, 214, 255, .14); color: #cfeeff; }
+  .hud-btn.active { border-color: #3f6a85; background: rgba(90, 214, 255, .12); color: #bfe9ff; }
   .axes-note { position: absolute; right: 10px; top: 10px; color: #6b6b74; font-size: 11px; user-select: none; }
   .legend {
       position: absolute; left: 10px; bottom: 10px; padding: 8px 10px; border-radius: 8px;
@@ -47,22 +51,56 @@
 </style>
 </head>
 <body>
-  <div id="scene"></div>
-  <div class="hud">
-    <h1>MCP Agent Canvas · model</h1>
-    <div>Revit-style: mid-drag = pan · Shift+mid-drag = orbit · wheel = zoom · left-click = pick</div>
-    <div id="status">initializing…</div>
-    <div class="hud-actions">
-      <button type="button" class="hud-btn primary" id="btn-load-view" title="Extract geometry from the active Revit view into this panel (same path as the agent; time-capped)">Load Revit view</button>
-      <button type="button" class="hud-btn" id="btn-home-view" title="Restore the default fit view after load">默认视角</button>
-      <button type="button" class="hud-btn" id="btn-send-capture" title="Snapshot this canvas and keep it for the agent / rendering model">Send capture</button>
-    </div>
+  <header class="canvas-chrome">
+    <nav class="canvas-tabs" role="tablist" aria-label="Agent Canvas views">
+      <button type="button" role="tab" id="tab-model" aria-selected="true" data-view="model">Model</button>
+      <button type="button" role="tab" id="tab-report" aria-selected="false" data-view="report">Report</button>
+    </nav>
+    <div class="canvas-chrome-meta" id="chrome-meta"></div>
+    <button type="button" class="theme-toggle" id="btn-theme" title="Toggle report theme" aria-label="Toggle report theme">☀</button>
+  </header>
+  <div class="canvas-views">
+    <section id="view-model" class="view is-active" role="tabpanel" aria-labelledby="tab-model">
+      <div id="scene"></div>
+      <div class="hud">
+        <h1>MCP Agent Canvas · model</h1>
+        <div>Revit-style: mid-drag = pan · Shift+mid-drag = orbit · wheel = zoom · left-click = pick</div>
+        <div id="status">initializing…</div>
+        <div class="hud-actions">
+          <button type="button" class="hud-btn primary" id="btn-load-view" title="Extract geometry from the active Revit view into this panel (same path as the agent; time-capped)">Load Revit view</button>
+          <button type="button" class="hud-btn" id="btn-home-view" title="Restore the default fit view after load">默认视角</button>
+          <button type="button" class="hud-btn active" id="btn-rooms" title="Show or hide room / space / area volumes">Rooms on</button>
+          <button type="button" class="hud-btn" id="btn-send-capture" title="Snapshot this canvas and keep it for the agent / rendering model">Send capture</button>
+        </div>
+      </div>
+      <div class="axes-note">x&nbsp;red · y&nbsp;green · z&nbsp;blue</div>
+      <div class="legend" id="legend"><h2>Analysis</h2><div id="legend-body"></div></div>
+    </section>
+    <section id="view-report" class="view uv" data-theme="dark" role="tabpanel" aria-labelledby="tab-report">
+      <div id="report-static" class="report-app">
+        <div class="report-top">
+          <div>
+            <h1 id="report-title">Dynamic report</h1>
+            <p class="sub" id="report-subtitle">Static report host — use ribbon Schedule for the full interactive MCP App; use panel_show_report for filtered summaries.</p>
+          </div>
+          <span class="report-kind" id="report-kind" hidden></span>
+        </div>
+        <div class="report-stats" id="report-stats" hidden></div>
+        <div class="report-notice" id="report-notice" hidden></div>
+        <div class="report-body" id="report-scroll">
+          <div class="report-empty" id="report-empty">
+            <h2>No static report yet</h2>
+            <p>Ribbon <b>Schedule</b> opens the full app. Or ask the agent to push a filtered table with <code>panel_show_report</code>.</p>
+          </div>
+          <div id="report-body"></div>
+        </div>
+      </div>
+    </section>
   </div>
-  <div class="axes-note">x&nbsp;red · y&nbsp;green · z&nbsp;blue</div>
-  <div class="legend" id="legend"><h2>Analysis</h2><div id="legend-body"></div></div>
 
-      <script src="https://panel.local/vendor/three.min.js"></script>
+  <script src="https://panel.local/vendor/three.min.js"></script>
   <script src="https://panel.local/vendor/controls/OrbitControls.js"></script>
+  <script src="https://panel.local/report.js"></script>
   <script>
     (function () {
       var host = document.getElementById('scene');
@@ -71,9 +109,24 @@
       var legendBody = document.getElementById('legend-body');
       var btnLoadView = document.getElementById('btn-load-view');
       var btnHomeView = document.getElementById('btn-home-view');
+      var btnRooms = document.getElementById('btn-rooms');
       var btnSendCapture = document.getElementById('btn-send-capture');
       var bridge = window.chrome && window.chrome.webview ? window.chrome.webview : null;
       var loadInFlight = false;
+      var roomsVisible = true;
+
+      function applyRoomsVisibility() {
+        elementMeshes.forEach(function (entry) {
+          var volume = entry.isVolume || isVolumeCategory(entry.category);
+          if (!volume) return;
+          if (entry.mesh) entry.mesh.visible = roomsVisible;
+          if (entry.backMesh) entry.backMesh.visible = roomsVisible;
+        });
+        if (btnRooms) {
+          btnRooms.textContent = roomsVisible ? 'Rooms on' : 'Rooms off';
+          btnRooms.classList.toggle('active', roomsVisible);
+        }
+      }
 
       function setStatus(text, color) {
         status.textContent = text;
@@ -251,14 +304,17 @@
         geometry.setIndex(new THREE.BufferAttribute(localIndices, 1));
         geometry.computeVertexNormals();
 
+        var category = element.category || '';
         var isGlazed = Boolean(element.isGlazed);
+        var isVolume = isVolumeCategory(category);
         var cutIndexCount = Math.max(0, Math.min(indexCount, Number(element.cutIndexCount) || 0));
         var cutColor = element.cutColor || null;
         var entry = {
           mesh: null,
           elementId: elementId,
-          category: element.category || '',
+          category: category,
           isGlazed: isGlazed,
+          isVolume: isVolume,
           cutIndexCount: cutIndexCount,
           cutColor: cutColor,
         };
@@ -273,11 +329,14 @@
         var mesh = new THREE.Mesh(geometry, materialsForEntry(entry, indexCount));
         mesh.userData.elementId = elementId;
         mesh.userData.name = element.name || '';
-        mesh.userData.category = element.category || '';
+        mesh.userData.category = category;
         mesh.userData.isGlazed = isGlazed;
+        mesh.userData.isVolume = isVolume;
+        if (isVolume) mesh.renderOrder = 2;
         entry.mesh = mesh;
 
-        if (useEdgeOverlay) {
+        // Skip hard edges on room/space volumes — they read as opaque cages.
+        if (useEdgeOverlay && !isVolume) {
           try {
             var edges = new THREE.EdgesGeometry(geometry, 15);
             if (!edgeLineMaterial) {
@@ -412,7 +471,7 @@
         if (!lastCutPlanes.length || !elementMeshes.length) return 0;
         var added = 0;
         elementMeshes.forEach(function (entry) {
-          if (!entry.mesh || entry.backMesh || entry.isGlazed) return;
+          if (!entry.mesh || entry.backMesh || entry.isGlazed || entry.isVolume || isVolumeCategory(entry.category)) return;
           var backMat = applyClipToMaterial(new THREE.MeshBasicMaterial({
             color: CUT_FACE_DEFAULT,
             side: THREE.BackSide,
@@ -540,10 +599,23 @@
       var WHITE_MODEL_FACADE = 0xffffff;
       var WHITE_MODEL_ROOF   = 0xfaf9f7;
       var WHITE_MODEL_GLAZED = 0x9ed8ff;
+      var WHITE_MODEL_ROOM   = 0x6ec8e8;               // translucent room / space / area volumes
       var WHITE_MODEL_ROAD   = 0x5a5a60;               // asphalt-like darker gray
       var WHITE_MODEL_GREEN  = 0x3d7a3a;               // vegetation
       var WHITE_MODEL_EMISSIVE = 0x2a2418;             // faint warm self-bounce (keeps large flat faces from flattening to pure gray)
       var WHITE_MODEL_EMISSIVE_INTENSITY = 0.35;
+
+      // Rooms/Spaces/Areas are closed solids that otherwise occlude the whole model.
+      function isVolumeCategory(category) {
+        var c = (category || '').toString().toLowerCase().trim();
+        if (!c) return false;
+        if (c === 'rooms' || c === 'spaces' || c === 'areas') return true;
+        if (c.indexOf('tag') !== -1 || c.indexOf('separat') !== -1) return false;
+        if (c.indexOf('space type') !== -1 || c.indexOf('setting') !== -1) return false;
+        if (c === 'room' || c.indexOf('rooms') === 0) return true;
+        if (c.indexOf('mep space') !== -1 || c === 'space') return true;
+        return false;
+      }
       // Section / scope-box cut fill — near-black like Revit shaded cut, never warm white.
       // MeshBasicMaterial (unlit) so bright key lights cannot wash it back to white.
       var CUT_FACE_DEFAULT = 0x2a2a2e;
@@ -607,6 +679,7 @@
       function materialForElement(elementId, category, isGlazed) {
         var analysis = analysisByElementId.get(Number(elementId));
         var isPicked = pickedElementId != null && Number(elementId) === Number(pickedElementId);
+        var isVolume = isVolumeCategory(category);
         var color;
         if (isPicked) {
           color = 0x2bd2ff; // bright cyan highlight for the element picked in this panel
@@ -615,23 +688,26 @@
           color = parsed != null ? parsed : baseColorForElement(category);
         } else if (analysis && analysis.status) {
           color = statusColor(analysis.status);
+        } else if (isVolume) {
+          color = WHITE_MODEL_ROOM;
         } else if (isGlazed) {
           color = WHITE_MODEL_GLAZED;
         } else {
           color = baseColorForElement(category);
         }
 
-        var transparent = Boolean(isGlazed && !isPicked && !analysis);
+        var transparent = Boolean((isGlazed || isVolume) && !isPicked && !analysis);
         var highlighted = isPicked;
+        var opacity = !transparent ? 1.0 : (isVolume ? 0.14 : 0.35);
         return applyClipToMaterial(new THREE.MeshStandardMaterial({
           color: color,
           roughness: 0.9,
           metalness: 0.0,
-          emissive: highlighted ? 0x0b5a7a : WHITE_MODEL_EMISSIVE,
-          emissiveIntensity: highlighted ? 0.9 : (analysis ? 0.0 : WHITE_MODEL_EMISSIVE_INTENSITY),
+          emissive: highlighted ? 0x0b5a7a : (isVolume ? 0x000000 : WHITE_MODEL_EMISSIVE),
+          emissiveIntensity: highlighted ? 0.9 : (analysis || isVolume ? 0.0 : WHITE_MODEL_EMISSIVE_INTENSITY),
           flatShading: false,
           transparent: transparent,
-          opacity: transparent ? 0.35 : 1.0,
+          opacity: opacity,
           depthWrite: !transparent,
           side: transparent ? THREE.DoubleSide : THREE.FrontSide,
         }));
@@ -814,6 +890,7 @@
             };
 
             fitCameraToModel();
+            applyRoomsVisibility();
             setStatus('elements: ' + lastTotals.elementCount
               + ' · verts: ' + lastTotals.totalVertices
               + (payload.truncated ? ' · truncated' : '')
@@ -928,6 +1005,9 @@
         if (normalized === 'analysis' || normalized === 'all' || normalized === 'model') {
           clearAnalysis();
         }
+        if ((normalized === 'report' || normalized === 'all') && window.PanelReport) {
+          window.PanelReport.clearReport();
+        }
         setStatus('cleared: ' + normalized);
       }
 
@@ -938,6 +1018,13 @@
       if (btnHomeView) {
         btnHomeView.addEventListener('click', function () {
           restoreHomePose();
+        });
+      }
+      if (btnRooms) {
+        btnRooms.addEventListener('click', function () {
+          roomsVisible = !roomsVisible;
+          applyRoomsVisibility();
+          setStatus(roomsVisible ? 'rooms visible' : 'rooms hidden');
         });
       }
 
@@ -1012,8 +1099,24 @@
             case 'clear':
               clear(payload.target || 'all');
               break;
-            case 'clear_analysis':
-              clearAnalysis();
+            case 'set_report':
+              if (window.PanelReport) {
+                window.PanelReport.applyReport(payload.report || payload, {
+                  switchView: payload.switchView !== false,
+                });
+              }
+              break;
+            case 'set_view':
+              if (window.PanelReport) {
+                var nextView = payload.view || 'model';
+                window.PanelReport.setView(nextView);
+                if (nextView === 'model') {
+                  if (window.__panelSetModelRendering) window.__panelSetModelRendering(true);
+                  resize();
+                } else if (window.__panelSetModelRendering) {
+                  window.__panelSetModelRendering(false);
+                }
+              }
               break;
             case 'fit':
               fitCameraToModel();
@@ -1167,15 +1270,46 @@
 
       function resize() {
         var w = host.clientWidth, h = host.clientHeight;
+        if (w < 1 || h < 1) return;
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
         renderer.setSize(w, h);
       }
       window.addEventListener('resize', resize);
 
+      var modelRenderOn = true;
+      var rafId = 0;
+      function setModelRendering(on) {
+        modelRenderOn = !!on;
+        if (modelRenderOn && !rafId) tick();
+      }
+      window.__panelSetModelRendering = setModelRendering;
+
+      if (window.PanelReport) {
+        window.PanelReport.init({
+          onViewChange: function (view) {
+            postToHost('view_changed', { view: view });
+            if (view === 'model') {
+              setModelRendering(true);
+              resize();
+            } else {
+              setModelRendering(false);
+            }
+          }
+        });
+        try {
+          var bootView = new URLSearchParams(location.search).get('view');
+          if (bootView === 'model' || bootView === 'report') {
+            window.PanelReport.setView(bootView);
+          }
+        } catch (_) {}
+      }
+
       var frames = 0;
       function tick() {
-        requestAnimationFrame(tick);
+        rafId = 0;
+        if (!modelRenderOn) return;
+        rafId = requestAnimationFrame(tick);
         controls.update();
         renderer.render(scene, camera);
         if (frames < 2) {
