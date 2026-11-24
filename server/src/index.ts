@@ -12,7 +12,7 @@ const server = new McpServer(
   },
   {
     instructions:
-      "Tool-first: call dedicated Revit tools before send_code_to_revit. Query with query_model/get_element_data/get_current_view_elements/get_selected_elements/ai_element_filter. Mutate with operate_element. Create with create_grid/create_level/create_room/create_*_based_element/create_dimensions. Views with open_view/zoom_to_elements/select_elements/export_views. MEP tools cover pipes, ducts, cable trays, and fittings (millimeters). send_code_to_revit is last resort only when no dedicated tool covers the API.",
+      "Tool-first: call dedicated Revit tools before send_code_to_revit. Query with query_model/get_element_data/get_current_view_elements/get_selected_elements/ai_element_filter. Mutate with operate_element. Create with create_grid/create_level/create_room/create_*_based_element/create_dimensions. Views with open_view/zoom_to_elements/select_elements/export_views. Agent Canvas: panel_show_geometry, panel_set_analysis, panel_set_annotations (3D measures), panel_show_report, panel_set_view, panel_fit, panel_clear, panel_status, panel_capture, panel_pick. MEP tools cover pipes, ducts, cable trays, and fittings (millimeters). send_code_to_revit is last resort only when no dedicated tool covers the API.",
   }
 );
 

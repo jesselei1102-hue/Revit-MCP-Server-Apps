@@ -20,6 +20,7 @@ namespace revit_mcp_plugin.Panel
 
         public static PanelGeometrySummary LastGeometry { get; private set; }
         public static List<PanelAnalysisItem> LastAnalysis { get; private set; } = new();
+        public static JArray LastAnnotations { get; private set; } = new();
         public static JObject LastReport { get; private set; }
         public static string ActiveView { get; private set; } = "model";
         public static long? LastPickElementId { get; private set; }
@@ -130,10 +131,30 @@ namespace revit_mcp_plugin.Panel
             PostToJs("geometry_delta", payload);
         }
 
-        public static void PostSetAnalysis(IList<PanelAnalysisItem> items)
+        public static double? LastAnalysisDefaultOpacity { get; private set; }
+
+        public static void PostSetAnalysis(IList<PanelAnalysisItem> items, double? defaultOpacity = null, bool setDefaultOpacity = false)
         {
             LastAnalysis = items != null ? new List<PanelAnalysisItem>(items) : new List<PanelAnalysisItem>();
-            PostToJs("set_analysis", new { items = LastAnalysis });
+            if (setDefaultOpacity)
+                LastAnalysisDefaultOpacity = defaultOpacity;
+
+            PostToJs("set_analysis", new
+            {
+                items = LastAnalysis,
+                defaultOpacity = setDefaultOpacity ? defaultOpacity : null,
+                clearDefaultOpacity = setDefaultOpacity && defaultOpacity == null,
+            });
+        }
+
+        /// <summary>
+        /// Push 3D measure / annotation overlays into the Model pane
+        /// (point-point, point-plane, plane-plane, angle, marker). Coordinates are Revit feet.
+        /// </summary>
+        public static void PostSetAnnotations(JArray items)
+        {
+            LastAnnotations = items != null ? (JArray)items.DeepClone() : new JArray();
+            PostToJs("set_annotations", new { items = LastAnnotations });
         }
 
         public static void PostClear(string target)
@@ -145,6 +166,14 @@ namespace revit_mcp_plugin.Panel
                 ActiveDocumentPath = null;
                 ActiveDocumentToken = null;
                 LastAnalysis = new List<PanelAnalysisItem>();
+                LastAnalysisDefaultOpacity = null;
+                LastAnnotations = new JArray();
+            }
+
+            if (string.Equals(target, "annotations", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(target, "dimensions", StringComparison.OrdinalIgnoreCase))
+            {
+                LastAnnotations = new JArray();
             }
 
             if (string.Equals(target, "report", StringComparison.OrdinalIgnoreCase)
@@ -159,6 +188,14 @@ namespace revit_mcp_plugin.Panel
         public static void PostFit()
         {
             PostToJs("fit", new { });
+        }
+
+        /// <summary>
+        /// Zoom the Model camera to a world-space target (Revit feet). Optional radius controls framing distance.
+        /// </summary>
+        public static void PostZoom(object target, double? radius = null, object size = null)
+        {
+            PostToJs("zoom", new { target, radius, size });
         }
 
         /// <summary>
@@ -368,6 +405,7 @@ namespace revit_mcp_plugin.Panel
                     totalIndices = LastGeometry?.TotalIndices ?? 0,
                     truncated = LastGeometry?.Truncated ?? false,
                     skippedElements = LastGeometry?.SkippedElements ?? 0,
+                    annotationCount = LastAnnotations?.Count ?? 0,
                     lastPick = LastPickElementId,
                     lastPickAtUtc = LastPickAtUtc,
                     lastError = LastError,

@@ -64,7 +64,7 @@
       <div id="scene"></div>
       <div class="hud">
         <h1>MCP Agent Canvas · model</h1>
-        <div>Revit-style: mid-drag = pan · Shift+mid-drag = orbit · wheel = zoom · left-click = pick</div>
+        <div>Left-drag = orbit · mid/right-drag = pan · wheel = zoom · left-click = pick</div>
         <div id="status">initializing…</div>
         <div class="hud-actions">
           <button type="button" class="hud-btn primary" id="btn-load-view" title="Extract geometry from the active Revit view into this panel (same path as the agent; time-capped)">Load Revit view</button>
@@ -173,17 +173,21 @@
       controls.target.set(0, 0, 0);
       controls.enableDamping = true;
       controls.dampingFactor = 0.08;
-      // Match Revit 3D navigation:
-      //   middle-drag = pan, Shift+middle-drag = orbit, wheel = zoom.
-      // Left button is reserved for pick (same as Revit select).
-      controls.mouseButtons.LEFT = -1;
+      // Classic BIM / original Agent Canvas navigation:
+      //   left-drag = orbit, middle/right-drag = pan, wheel = zoom.
+      // Left-click (no drag) still picks via the pointerup handler below.
+      controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
       controls.mouseButtons.MIDDLE = THREE.MOUSE.PAN;
-      controls.mouseButtons.RIGHT = -1;
+      controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
       controls.screenSpacePanning = true;
       // Large site models (Expo / campus) need far more than 500 ft of orbit room.
       controls.maxDistance = 50000;
       controls.minDistance = 0.05;
       controls.update();
+      // Keep the browser context menu from eating right-drag pan.
+      renderer.domElement.addEventListener('contextmenu', function (event) {
+        event.preventDefault();
+      });
 
       // ----- Home pose (default fit after Load) -----
       var homePose = null;
@@ -234,12 +238,18 @@
       modelRoot.name = 'model-root';
       scene.add(modelRoot);
 
+      var dimensionRoot = new THREE.Group();
+      dimensionRoot.name = 'dimension-root';
+      scene.add(dimensionRoot);
+
       var elementMeshes = [];
       var analysisByElementId = new Map();
+      var defaultModelOpacity = null; // null = opaque context; 0–1 fades non-analyzed meshes
       var pickedElementId = null;
       var lastTotals = { elementCount: 0, totalVertices: 0 };
       var edgeLayer = true;                         // hard-edge overlay on top of the solid mesh
       var edgeLineMaterial = null;
+      var lastDimensions = [];
 
       // Remove every mesh (and its hard-edge overlay) that belongs to the given elementId.
       // Disposes geometry to avoid GPU-memory leaks on incremental sync.
@@ -569,6 +579,451 @@
         elementMeshes = [];
         lastSectionCorners = [];
         setSectionClipping([], false);
+        // Keep lastDimensions so a geometry reload can re-apply; clear visual only.
+        clearDimensionMeshes();
+      }
+
+      function clearDimensionMeshes() {
+        var disposedMats = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
+        function disposeMat(mat) {
+          if (!mat) return;
+          if (disposedMats) {
+            if (disposedMats.has(mat)) return;
+            disposedMats.add(mat);
+          }
+          if (mat.map) mat.map.dispose();
+          mat.dispose();
+        }
+        function disposeObj(obj) {
+          if (!obj) return;
+          for (var j = obj.children.length - 1; j >= 0; j--) {
+            disposeObj(obj.children[j]);
+            obj.remove(obj.children[j]);
+          }
+          disposeMat(obj.material);
+          if (obj.geometry) obj.geometry.dispose();
+        }
+        for (var i = dimensionRoot.children.length - 1; i >= 0; i--) {
+          var child = dimensionRoot.children[i];
+          dimensionRoot.remove(child);
+          disposeObj(child);
+        }
+      }
+
+      function clearDimensions() {
+        lastDimensions = [];
+        clearDimensionMeshes();
+      }
+
+      function toVec3(v) {
+        if (!v) return null;
+        if (Array.isArray(v) && v.length >= 3) {
+          return new THREE.Vector3(Number(v[0]), Number(v[1]), Number(v[2]));
+        }
+        if (typeof v === 'object') {
+          var x = v.x != null ? v.x : v.X;
+          var y = v.y != null ? v.y : v.Y;
+          var z = v.z != null ? v.z : v.Z;
+          if (x == null || y == null || z == null) return null;
+          return new THREE.Vector3(Number(x), Number(y), Number(z));
+        }
+        return null;
+      }
+
+      function makeDimLabelSprite(text, colorHex) {
+        var canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 128;
+        var ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // pill background
+        var padX = 18;
+        ctx.font = '600 42px "Segoe UI", system-ui, sans-serif';
+        var metrics = ctx.measureText(text);
+        var tw = Math.min(metrics.width + padX * 2, canvas.width - 8);
+        var th = 64;
+        var tx = (canvas.width - tw) / 2;
+        var ty = (canvas.height - th) / 2;
+        ctx.fillStyle = 'rgba(16,16,20,0.88)';
+        ctx.strokeStyle = colorHex || '#e8e8ec';
+        ctx.lineWidth = 3;
+        var r = 12;
+        ctx.beginPath();
+        ctx.moveTo(tx + r, ty);
+        ctx.lineTo(tx + tw - r, ty);
+        ctx.quadraticCurveTo(tx + tw, ty, tx + tw, ty + r);
+        ctx.lineTo(tx + tw, ty + th - r);
+        ctx.quadraticCurveTo(tx + tw, ty + th, tx + tw - r, ty + th);
+        ctx.lineTo(tx + r, ty + th);
+        ctx.quadraticCurveTo(tx, ty + th, tx, ty + th - r);
+        ctx.lineTo(tx, ty + r);
+        ctx.quadraticCurveTo(tx, ty, tx + r, ty);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = colorHex || '#e8e8ec';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, canvas.width / 2, canvas.height / 2 + 1);
+        var texture = new THREE.CanvasTexture(canvas);
+        texture.minFilter = THREE.LinearFilter;
+        texture.needsUpdate = true;
+        var mat = new THREE.SpriteMaterial({
+          map: texture,
+          transparent: true,
+          depthTest: false,
+          depthWrite: false,
+        });
+        var sprite = new THREE.Sprite(mat);
+        sprite.renderOrder = 20;
+        // World size ~ readable next to room-scale geometry (feet).
+        var worldH = 1.6;
+        sprite.scale.set(worldH * (canvas.width / canvas.height), worldH, 1);
+        return sprite;
+      }
+
+      function formatMeters(feet) {
+        var m = Number(feet) * 0.3048;
+        if (!Number.isFinite(m)) return '—';
+        // Space-check references: mm under 1 m, otherwise meters.
+        if (Math.abs(m) < 1) return (m * 1000).toFixed(0) + ' mm';
+        return m.toFixed(2) + ' m';
+      }
+
+      function formatDegrees(radians) {
+        return ((Number(radians) * 180) / Math.PI).toFixed(1) + '°';
+      }
+
+      // Always show the measured value; optional agent note becomes a prefix.
+      function measureLabel(note, measured) {
+        var n = note != null ? String(note).trim() : '';
+        var m = measured != null ? String(measured).trim() : '';
+        if (n && m) {
+          // If the note already contains the number, don't duplicate.
+          if (n.indexOf(m) >= 0) return n;
+          return n + ' · ' + m;
+        }
+        return m || n || '—';
+      }
+
+      function parsePlane(raw, originKeys, normalKeys) {
+        if (!raw) return null;
+        if (raw.origin != null || raw.Origin != null || raw.normal != null || raw.Normal != null) {
+          var o = toVec3(raw.origin || raw.Origin || raw.point || raw.Point);
+          var n = toVec3(raw.normal || raw.Normal);
+          if (!o || !n || n.lengthSq() < 1e-12) return null;
+          return { origin: o, normal: n.clone().normalize() };
+        }
+        var origin = toVec3(pickAny(raw, originKeys || ['planeOrigin', 'PlaneOrigin', 'origin', 'Origin']));
+        var normal = toVec3(pickAny(raw, normalKeys || ['planeNormal', 'PlaneNormal', 'normal', 'Normal']));
+        if (!origin || !normal || normal.lengthSq() < 1e-12) return null;
+        return { origin: origin, normal: normal.clone().normalize() };
+      }
+
+      function pushSegment(out, a, b) {
+        out.push(a.x, a.y, a.z, b.x, b.y, b.z);
+      }
+
+      function tickSizeFor(len) {
+        return Math.max(0.25, Math.min(1.2, len * 0.08));
+      }
+
+      function addDimTicks(linePositions, a, b, dir) {
+        var len = a.distanceTo(b);
+        var tickDir = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 0, 1));
+        if (tickDir.lengthSq() < 1e-8) tickDir.crossVectors(dir, new THREE.Vector3(0, 1, 0));
+        tickDir.normalize().multiplyScalar(tickSizeFor(len));
+        linePositions.push(a.x - tickDir.x, a.y - tickDir.y, a.z - tickDir.z, a.x + tickDir.x, a.y + tickDir.y, a.z + tickDir.z);
+        linePositions.push(b.x - tickDir.x, b.y - tickDir.y, b.z - tickDir.z, b.x + tickDir.x, b.y + tickDir.y, b.z + tickDir.z);
+        return tickDir;
+      }
+
+      function addPlanePatch(linePositions, origin, normal, size) {
+        var n = normal.clone().normalize();
+        var u = new THREE.Vector3().crossVectors(n, new THREE.Vector3(0, 0, 1));
+        if (u.lengthSq() < 1e-8) u.crossVectors(n, new THREE.Vector3(0, 1, 0));
+        u.normalize().multiplyScalar(size);
+        var v = new THREE.Vector3().crossVectors(n, u).normalize().multiplyScalar(size);
+        var p00 = origin.clone().sub(u).sub(v);
+        var p10 = origin.clone().add(u).sub(v);
+        var p11 = origin.clone().add(u).add(v);
+        var p01 = origin.clone().sub(u).add(v);
+        pushSegment(linePositions, p00, p10);
+        pushSegment(linePositions, p10, p11);
+        pushSegment(linePositions, p11, p01);
+        pushSegment(linePositions, p01, p00);
+        // Normal tick so the plane faces are readable.
+        pushSegment(linePositions, origin, origin.clone().add(n.multiplyScalar(size * 0.6)));
+      }
+
+      function addAngleArc(linePositions, vertex, dirA, dirB, radius, segments) {
+        var segs = segments || 16;
+        var axis = new THREE.Vector3().crossVectors(dirA, dirB);
+        if (axis.lengthSq() < 1e-12) return;
+        axis.normalize();
+        var angle = dirA.angleTo(dirB);
+        if (angle < 1e-4) return;
+        var quat = new THREE.Quaternion();
+        var prev = vertex.clone().add(dirA.clone().multiplyScalar(radius));
+        for (var i = 1; i <= segs; i++) {
+          var t = (angle * i) / segs;
+          quat.setFromAxisAngle(axis, t);
+          var nextDir = dirA.clone().applyQuaternion(quat).normalize();
+          var next = vertex.clone().add(nextDir.multiplyScalar(radius));
+          pushSegment(linePositions, prev, next);
+          prev = next;
+        }
+      }
+
+      function addAnnotationLabel(text, colorHex, position, nudge) {
+        var sprite = makeDimLabelSprite(String(text), String(colorHex || '#f0c040'));
+        sprite.position.copy(position);
+        if (nudge) sprite.position.add(nudge);
+        dimensionRoot.add(sprite);
+      }
+
+      function appendDistanceAnnotation(dim, linePositions) {
+        var start = toVec3(pickAny(dim, ['start', 'Start', 'a', 'A', 'from', 'From']));
+        var end = toVec3(pickAny(dim, ['end', 'End', 'b', 'B', 'to', 'To']));
+        if (!start || !end) return false;
+        var offset = toVec3(pickAny(dim, ['offset', 'Offset'])) || new THREE.Vector3(0, 0, 0);
+        var colorHex = pickAny(dim, ['color', 'Color']) || '#f0c040';
+        var note = pickAny(dim, ['label', 'Label', 'text', 'Text', 'note', 'Note']);
+        var measured = formatMeters(start.distanceTo(end));
+        var label = measureLabel(note, measured);
+
+        var a = start.clone().add(offset);
+        var b = end.clone().add(offset);
+        var dir = new THREE.Vector3().subVectors(b, a);
+        var len = dir.length();
+        if (len < 1e-6) return false;
+        dir.multiplyScalar(1 / len);
+
+        pushSegment(linePositions, start, a);
+        pushSegment(linePositions, end, b);
+        pushSegment(linePositions, a, b);
+        var tickDir = addDimTicks(linePositions, a, b, dir);
+        var mid = new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5);
+        addAnnotationLabel(label, colorHex, mid, tickDir.clone().normalize().multiplyScalar(0.35));
+        return true;
+      }
+
+      function appendPointPlaneAnnotation(dim, linePositions) {
+        var point = toVec3(pickAny(dim, ['point', 'Point', 'start', 'Start']));
+        var plane = parsePlane(pickAny(dim, ['plane', 'Plane']) || dim);
+        if (!point || !plane) return false;
+        var colorHex = pickAny(dim, ['color', 'Color']) || '#6ec8e8';
+        var note = pickAny(dim, ['label', 'Label', 'text', 'Text', 'note', 'Note']);
+        var n = plane.normal;
+        var signed = new THREE.Vector3().subVectors(point, plane.origin).dot(n);
+        var foot = point.clone().sub(n.clone().multiplyScalar(signed));
+        var measured = formatMeters(Math.abs(signed));
+        var label = measureLabel(note, measured);
+
+        pushSegment(linePositions, point, foot);
+        var dir = new THREE.Vector3().subVectors(foot, point);
+        var len = dir.length();
+        if (len > 1e-6) {
+          dir.multiplyScalar(1 / len);
+          addDimTicks(linePositions, point, foot, dir);
+        }
+        var patchSize = Math.max(0.8, Math.abs(signed) * 0.25, 1.2);
+        addPlanePatch(linePositions, foot, n, patchSize);
+        var mid = new THREE.Vector3().addVectors(point, foot).multiplyScalar(0.5);
+        addAnnotationLabel(label, colorHex, mid, n.clone().multiplyScalar(0.35));
+        return true;
+      }
+
+      function appendPlanePlaneAnnotation(dim, linePositions) {
+        var planeA = parsePlane(pickAny(dim, ['planeA', 'PlaneA', 'a', 'A']) || dim.planeA);
+        var planeB = parsePlane(pickAny(dim, ['planeB', 'PlaneB', 'b', 'B']) || dim.planeB);
+        if (!planeA || !planeB) {
+          // Allow flattened fields: originA/normalA + originB/normalB
+          planeA = parsePlane({
+            origin: pickAny(dim, ['originA', 'OriginA', 'planeOriginA']),
+            normal: pickAny(dim, ['normalA', 'NormalA', 'planeNormalA']),
+          });
+          planeB = parsePlane({
+            origin: pickAny(dim, ['originB', 'OriginB', 'planeOriginB']),
+            normal: pickAny(dim, ['normalB', 'NormalB', 'planeNormalB']),
+          });
+        }
+        if (!planeA || !planeB) return false;
+        var colorHex = pickAny(dim, ['color', 'Color']) || '#c08cf0';
+        var note = pickAny(dim, ['label', 'Label', 'text', 'Text', 'note', 'Note']);
+
+        var nA = planeA.normal;
+        var nB = planeB.normal;
+        var parallel = Math.abs(Math.abs(nA.dot(nB)) - 1) < 1e-3;
+        var signed = new THREE.Vector3().subVectors(planeB.origin, planeA.origin).dot(nA);
+        var footB = planeA.origin.clone().add(nA.clone().multiplyScalar(signed));
+        // Prefer measuring along A→projection of A.origin onto B when nearly parallel.
+        var footOnB = planeA.origin.clone().sub(
+          nB.clone().multiplyScalar(new THREE.Vector3().subVectors(planeA.origin, planeB.origin).dot(nB))
+        );
+        var aPt = planeA.origin.clone();
+        var bPt = parallel ? footOnB : footB;
+        var dist = aPt.distanceTo(bPt);
+        var measured = parallel ? formatMeters(dist) : (formatMeters(dist) + ' (skew)');
+        var label = measureLabel(note, measured);
+
+        var patchSize = Math.max(1.0, dist * 0.3, 1.5);
+        addPlanePatch(linePositions, aPt, nA, patchSize);
+        addPlanePatch(linePositions, bPt, nB, patchSize);
+        pushSegment(linePositions, aPt, bPt);
+        if (dist > 1e-6) {
+          var dir = new THREE.Vector3().subVectors(bPt, aPt).normalize();
+          addDimTicks(linePositions, aPt, bPt, dir);
+        }
+        var mid = new THREE.Vector3().addVectors(aPt, bPt).multiplyScalar(0.5);
+        addAnnotationLabel(label, colorHex, mid, nA.clone().multiplyScalar(0.4));
+        return true;
+      }
+
+      function appendAngleAnnotation(dim, linePositions) {
+        var vertex = toVec3(pickAny(dim, ['vertex', 'Vertex', 'center', 'Center', 'b', 'B']));
+        var pA = toVec3(pickAny(dim, ['a', 'A', 'pointA', 'PointA', 'start', 'Start']));
+        var pC = toVec3(pickAny(dim, ['c', 'C', 'pointB', 'PointB', 'pointC', 'PointC', 'end', 'End']));
+        // Also accept { points: [a, vertex, c] }
+        if ((!vertex || !pA || !pC) && Array.isArray(dim.points) && dim.points.length >= 3) {
+          pA = toVec3(dim.points[0]);
+          vertex = toVec3(dim.points[1]);
+          pC = toVec3(dim.points[2]);
+        }
+        if (!vertex || !pA || !pC) return false;
+        var colorHex = pickAny(dim, ['color', 'Color']) || '#f08060';
+        var note = pickAny(dim, ['label', 'Label', 'text', 'Text', 'note', 'Note']);
+        var dirA = new THREE.Vector3().subVectors(pA, vertex);
+        var dirC = new THREE.Vector3().subVectors(pC, vertex);
+        if (dirA.lengthSq() < 1e-12 || dirC.lengthSq() < 1e-12) return false;
+        dirA.normalize();
+        dirC.normalize();
+        var angle = dirA.angleTo(dirC);
+        var measured = formatDegrees(angle);
+        var label = measureLabel(note, measured);
+
+        var armLen = Math.max(
+          1.5,
+          Math.min(pA.distanceTo(vertex), pC.distanceTo(vertex)) * 0.55,
+          2.0
+        );
+        var tipA = vertex.clone().add(dirA.clone().multiplyScalar(armLen));
+        var tipC = vertex.clone().add(dirC.clone().multiplyScalar(armLen));
+        pushSegment(linePositions, vertex, tipA);
+        pushSegment(linePositions, vertex, tipC);
+        var arcR = armLen * 0.45;
+        addAngleArc(linePositions, vertex, dirA, dirC, arcR, 20);
+        var bis = dirA.clone().add(dirC);
+        if (bis.lengthSq() < 1e-10) bis = new THREE.Vector3().crossVectors(dirA, new THREE.Vector3(0, 0, 1));
+        if (bis.lengthSq() < 1e-10) bis = new THREE.Vector3(0, 1, 0);
+        bis.normalize();
+        var labelPos = vertex.clone().add(bis.multiplyScalar(arcR + 0.4));
+        addAnnotationLabel(label, colorHex, labelPos, null);
+        return true;
+      }
+
+      function appendMarkerAnnotation(dim) {
+        var point = toVec3(pickAny(dim, ['point', 'Point', 'position', 'Position', 'at', 'At']));
+        if (!point) return false;
+        var colorHex = pickAny(dim, ['color', 'Color']) || '#e8e8ec';
+        var label = pickAny(dim, ['label', 'Label', 'text', 'Text']) || '•';
+        addAnnotationLabel(label, colorHex, point, new THREE.Vector3(0, 0, 0.4));
+        return true;
+      }
+
+      function annotationKind(dim) {
+        var raw = String(pickAny(dim, ['kind', 'Kind', 'type', 'Type']) || '').toLowerCase().replace(/_/g, '-');
+        if (raw) return raw;
+        if (dim.planeA || dim.PlaneA || dim.originA || dim.OriginA) return 'plane-plane';
+        if (dim.plane || dim.Plane || dim.planeOrigin || dim.PlaneOrigin || dim.planeNormal || dim.PlaneNormal) {
+          return 'point-plane';
+        }
+        if (dim.vertex || dim.Vertex || (Array.isArray(dim.points) && dim.points.length >= 3)) return 'angle';
+        if ((dim.point || dim.Point || dim.position || dim.Position) && !(dim.end || dim.End || dim.to || dim.To)) {
+          return 'marker';
+        }
+        return 'distance';
+      }
+
+      function applyDimensions(items) {
+        clearDimensionMeshes();
+        lastDimensions = Array.isArray(items) ? items.slice() : [];
+        window.__panelAnnotationCount = lastDimensions.length;
+        if (!lastDimensions.length) {
+          setStatus('annotations cleared');
+          return;
+        }
+
+        var linePositions = [];
+        var drawn = 0;
+        lastDimensions.forEach(function (dim) {
+          if (!dim || typeof dim !== 'object') return;
+          var kind = annotationKind(dim);
+          var ok = false;
+          if (kind === 'point-plane' || kind === 'pointplane' || kind === 'point-to-plane') {
+            ok = appendPointPlaneAnnotation(dim, linePositions);
+          } else if (kind === 'plane-plane' || kind === 'planeplane' || kind === 'plane-to-plane') {
+            ok = appendPlanePlaneAnnotation(dim, linePositions);
+          } else if (kind === 'angle') {
+            ok = appendAngleAnnotation(dim, linePositions);
+          } else if (kind === 'marker' || kind === 'label' || kind === 'note') {
+            ok = appendMarkerAnnotation(dim);
+          } else {
+            // distance / point-point / default
+            ok = appendDistanceAnnotation(dim, linePositions);
+          }
+          if (ok) drawn += 1;
+        });
+
+        if (linePositions.length) {
+          // WebGL ignores LineBasicMaterial.linewidth on Windows — use thin cylinders instead.
+          // ~0.06 ft ≈ 18 mm world radius; readable next to room-scale geometry.
+          var fatRadius = 0.06;
+          var fatMat = new THREE.MeshBasicMaterial({
+            color: 0xf0c040,
+            depthTest: false,
+            depthWrite: false,
+            transparent: true,
+            opacity: 0.95,
+          });
+          fatMat.userData.sharedDimMat = true;
+          var fatGroup = new THREE.Group();
+          fatGroup.name = 'annotation-fat-lines';
+          fatGroup.renderOrder = 19;
+          var up = new THREE.Vector3(0, 1, 0);
+          for (var si = 0; si < linePositions.length; si += 6) {
+            var sa = new THREE.Vector3(linePositions[si], linePositions[si + 1], linePositions[si + 2]);
+            var sb = new THREE.Vector3(linePositions[si + 3], linePositions[si + 4], linePositions[si + 5]);
+            var seg = new THREE.Vector3().subVectors(sb, sa);
+            var segLen = seg.length();
+            if (segLen < 1e-5) continue;
+            var cyl = new THREE.CylinderGeometry(fatRadius, fatRadius, segLen, 6, 1, false);
+            var mesh = new THREE.Mesh(cyl, fatMat);
+            mesh.position.copy(sa).add(sb).multiplyScalar(0.5);
+            mesh.quaternion.setFromUnitVectors(up, seg.multiplyScalar(1 / segLen));
+            mesh.renderOrder = 19;
+            fatGroup.add(mesh);
+          }
+          dimensionRoot.add(fatGroup);
+        }
+
+        setStatus('annotations: ' + drawn + '/' + lastDimensions.length);
+      }
+
+      function tryLoadDimensionsSidecar() {
+        return fetch('https://panel.local/tmp/panel_dimensions.json', { cache: 'no-store' })
+          .then(function (response) {
+            if (!response.ok) return null;
+            return response.json();
+          })
+          .then(function (payload) {
+            if (!payload) return;
+            var items = Array.isArray(payload)
+              ? payload
+              : (payload.annotations || payload.dimensions || payload.items || []);
+            if (items && items.length) applyDimensions(items);
+          })
+          .catch(function () { /* optional sidecar */ });
       }
 
       function decodeBase64Float32(base64) {
@@ -696,9 +1151,22 @@
           color = baseColorForElement(category);
         }
 
-        var transparent = Boolean((isGlazed || isVolume) && !isPicked && !analysis);
         var highlighted = isPicked;
-        var opacity = !transparent ? 1.0 : (isVolume ? 0.14 : 0.35);
+        var opacity = 1.0;
+        var transparent = false;
+        if (analysis && analysis.opacity != null && Number.isFinite(Number(analysis.opacity))) {
+          opacity = Math.max(0, Math.min(1, Number(analysis.opacity)));
+          transparent = opacity < 0.999 && !isPicked;
+        } else if ((isGlazed || isVolume) && !isPicked && !analysis) {
+          transparent = true;
+          opacity = isVolume ? 0.14 : 0.35;
+        } else if (!isPicked && defaultModelOpacity != null && Number.isFinite(defaultModelOpacity) && defaultModelOpacity < 0.999) {
+          // Ghost context: fade everything not explicitly analyzed.
+          if (!analysis) {
+            opacity = Math.max(0, Math.min(1, defaultModelOpacity));
+            transparent = true;
+          }
+        }
         return applyClipToMaterial(new THREE.MeshStandardMaterial({
           color: color,
           roughness: 0.9,
@@ -891,10 +1359,12 @@
 
             fitCameraToModel();
             applyRoomsVisibility();
+            if (lastDimensions.length) applyDimensions(lastDimensions);
             setStatus('elements: ' + lastTotals.elementCount
               + ' · verts: ' + lastTotals.totalVertices
               + (payload.truncated ? ' · truncated' : '')
-              + (activeClipPlanes.length ? ' · clip ' + activeClipPlanes.length : ''));
+              + (activeClipPlanes.length ? ' · clip ' + activeClipPlanes.length : '')
+              + (lastDimensions.length ? ' · annotations ' + lastDimensions.length : ''));
             postToHost('log', {
               message: 'geometry loaded',
               elementCount: lastTotals.elementCount,
@@ -907,6 +1377,49 @@
           .catch(function (error) {
             fail(error && error.message ? error.message : String(error));
           });
+      }
+
+      function zoomCameraTo(opts) {
+        var o = opts || {};
+        var target = toVec3(o.target || o.center || o.point);
+        if (!target && Array.isArray(o.bbox) && o.bbox.length >= 2) {
+          var a = toVec3(o.bbox[0]);
+          var b = toVec3(o.bbox[1]);
+          if (a && b) target = new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5);
+        }
+        if (!target) {
+          fitCameraToModel();
+          return { ok: false, error: 'no_target' };
+        }
+        var radius = Number(o.radius);
+        if (!Number.isFinite(radius) || radius <= 0) {
+          if (o.size) {
+            var sz = toVec3(o.size);
+            radius = sz ? Math.max(sz.x, sz.y, sz.z, 1) * 0.7 : 20;
+          } else {
+            radius = 20;
+          }
+        }
+        camera.up.set(0, 0, 1);
+        controls.target.copy(target);
+        controls.maxDistance = Math.max(radius * 40, 200);
+        controls.minDistance = Math.max(radius / 500, 0.05);
+        camera.position.set(
+          target.x + radius * 0.95,
+          target.y - radius * 0.95,
+          target.z + radius * 0.55
+        );
+        camera.near = Math.max(radius / 10000, 0.01);
+        camera.far = Math.max(radius * 80, 2000);
+        camera.updateProjectionMatrix();
+        controls.enabled = true;
+        controls.update();
+        setStatus('zoomed · r=' + radius.toFixed(1));
+        return {
+          ok: true,
+          target: [target.x, target.y, target.z],
+          radius: radius,
+        };
       }
 
       function fitCameraToModel() {
@@ -970,8 +1483,14 @@
         return null;
       }
 
-      function applyAnalysis(items) {
+      function applyAnalysis(items, options) {
         analysisByElementId.clear();
+        var opts = options || {};
+        if (opts.defaultOpacity != null && Number.isFinite(Number(opts.defaultOpacity))) {
+          defaultModelOpacity = Math.max(0, Math.min(1, Number(opts.defaultOpacity)));
+        } else if (opts.clearDefaultOpacity) {
+          defaultModelOpacity = null;
+        }
         (items || []).forEach(function (item) {
           var rawId = pickAny(item, ['elementId', 'ElementId', 'Id']);
           var elementId = Number(rawId);
@@ -979,18 +1498,25 @@
           var color = pickAny(item, ['color', 'Color']);
           var status = pickAny(item, ['status', 'Status']);
           var label = pickAny(item, ['label', 'Label']);
+          var opacityRaw = pickAny(item, ['opacity', 'Opacity']);
+          var opacity = opacityRaw != null && Number.isFinite(Number(opacityRaw))
+            ? Math.max(0, Math.min(1, Number(opacityRaw)))
+            : null;
           analysisByElementId.set(elementId, {
             color: color != null ? String(color) : null,
             status: status != null ? String(status) : null,
             label: label != null ? String(label) : null,
+            opacity: opacity,
           });
         });
         rebuildMaterials();
-        setStatus('analysis applied: ' + analysisByElementId.size + ' item(s)');
+        setStatus('analysis applied: ' + analysisByElementId.size + ' item(s)'
+          + (defaultModelOpacity != null ? ' · default opacity ' + defaultModelOpacity : ''));
       }
 
       function clearAnalysis() {
         analysisByElementId.clear();
+        defaultModelOpacity = null;
         rebuildMaterials();
         setStatus('analysis cleared');
       }
@@ -1004,6 +1530,9 @@
         }
         if (normalized === 'analysis' || normalized === 'all' || normalized === 'model') {
           clearAnalysis();
+        }
+        if (normalized === 'annotations' || normalized === 'dimensions' || normalized === 'all' || normalized === 'model') {
+          clearDimensions();
         }
         if ((normalized === 'report' || normalized === 'all') && window.PanelReport) {
           window.PanelReport.clearReport();
@@ -1091,10 +1620,17 @@
               applyGeometryDelta(payload);
               break;
             case 'set_analysis':
-              applyAnalysis(payload.items || []);
+              applyAnalysis(payload.items || [], {
+                defaultOpacity: payload.defaultOpacity != null ? payload.defaultOpacity : payload.DefaultOpacity,
+                clearDefaultOpacity: payload.clearDefaultOpacity === true,
+              });
               break;
             case 'clear_analysis':
               clearAnalysis();
+              break;
+            case 'set_annotations':
+            case 'set_dimensions':
+              applyDimensions(payload.items || payload.annotations || payload.dimensions || []);
               break;
             case 'clear':
               clear(payload.target || 'all');
@@ -1120,6 +1656,9 @@
               break;
             case 'fit':
               fitCameraToModel();
+              break;
+            case 'zoom':
+              zoomCameraTo(payload || {});
               break;
             case 'capture':
               handleCapture(payload || {});
@@ -1267,6 +1806,20 @@
 
       // Callable from host script injection if needed.
       window.__panelCapture = captureFrame;
+      window.__panelApplyAnnotations = applyDimensions;
+      window.__panelClearAnnotations = clearDimensions;
+      window.__panelApplyAnalysis = applyAnalysis;
+      window.__panelClearAnalysis = clearAnalysis;
+      window.__panelZoomTo = zoomCameraTo;
+      window.__panelFit = fitCameraToModel;
+      window.__panelAnnotationCount = lastDimensions.length;
+      window.__panelMouseButtons = {
+        LEFT: controls.mouseButtons.LEFT,
+        MIDDLE: controls.mouseButtons.MIDDLE,
+        RIGHT: controls.mouseButtons.RIGHT,
+        ROTATE: THREE.MOUSE.ROTATE,
+        PAN: THREE.MOUSE.PAN,
+      };
 
       function resize() {
         var w = host.clientWidth, h = host.clientHeight;

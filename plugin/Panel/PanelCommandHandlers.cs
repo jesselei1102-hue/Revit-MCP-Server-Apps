@@ -41,6 +41,9 @@ namespace revit_mcp_plugin.Panel
         {
             try
             {
+                // Make sure the dockable Agent Canvas is visible before posting meshes.
+                PanelService.Instance.Show(app);
+
                 UIDocument uiDoc = app.ActiveUIDocument
                     ?? throw new InvalidOperationException("No active document");
                 Document doc = uiDoc.Document;
@@ -131,12 +134,16 @@ namespace revit_mcp_plugin.Panel
     {
         private readonly ManualResetEvent _resetEvent = new(false);
         private List<PanelAnalysisItem> _items = new();
+        private double? _defaultOpacity;
+        private bool _setDefaultOpacity;
 
         public object Result { get; private set; }
 
-        public void SetItems(IList<PanelAnalysisItem> items)
+        public void SetItems(IList<PanelAnalysisItem> items, double? defaultOpacity = null, bool setDefaultOpacity = false)
         {
             _items = items != null ? new List<PanelAnalysisItem>(items) : new List<PanelAnalysisItem>();
+            _defaultOpacity = defaultOpacity;
+            _setDefaultOpacity = setDefaultOpacity;
             Result = null;
             _resetEvent.Reset();
         }
@@ -145,8 +152,13 @@ namespace revit_mcp_plugin.Panel
         {
             try
             {
-                PanelBridge.PostSetAnalysis(_items);
-                Result = new { ok = true, applied = _items.Count };
+                PanelBridge.PostSetAnalysis(_items, _defaultOpacity, _setDefaultOpacity);
+                Result = new
+                {
+                    ok = true,
+                    applied = _items.Count,
+                    defaultOpacity = _setDefaultOpacity ? _defaultOpacity : PanelBridge.LastAnalysisDefaultOpacity,
+                };
             }
             catch (Exception ex)
             {
@@ -162,6 +174,45 @@ namespace revit_mcp_plugin.Panel
         public bool WaitForCompletion(int timeoutMilliseconds) => _resetEvent.WaitOne(timeoutMilliseconds);
 
         public string GetName() => "MCP Agent Canvas set analysis";
+    }
+
+    internal class PanelSetAnnotationsEventHandler : IExternalEventHandler
+    {
+        private readonly ManualResetEvent _resetEvent = new(false);
+        private JArray _items = new();
+
+        public object Result { get; private set; }
+
+        public void SetItems(JArray items)
+        {
+            _items = items != null ? (JArray)items.DeepClone() : new JArray();
+            Result = null;
+            _resetEvent.Reset();
+        }
+
+        public void Execute(UIApplication app)
+        {
+            try
+            {
+                PanelService.Instance.Show(app);
+                PanelBridge.PostSetView("model");
+                PanelBridge.PostSetAnnotations(_items);
+                Result = new { ok = true, applied = _items.Count, view = "model" };
+            }
+            catch (Exception ex)
+            {
+                PanelBridge.SetError(ex.Message);
+                Result = new { ok = false, error = "panel_set_annotations_failed", message = ex.Message };
+            }
+            finally
+            {
+                _resetEvent.Set();
+            }
+        }
+
+        public bool WaitForCompletion(int timeoutMilliseconds) => _resetEvent.WaitOne(timeoutMilliseconds);
+
+        public string GetName() => "MCP Agent Canvas set annotations";
     }
 
     internal class PanelShowReportEventHandler : IExternalEventHandler
@@ -220,6 +271,9 @@ namespace revit_mcp_plugin.Panel
         {
             try
             {
+                // Ribbon Model/Report buttons already Show(); MCP panel_set_view must too
+                // or geometry posts into a hidden / never-opened pane.
+                PanelService.Instance.Show(app);
                 Result = PanelBridge.PostSetView(_view);
             }
             catch (Exception ex)

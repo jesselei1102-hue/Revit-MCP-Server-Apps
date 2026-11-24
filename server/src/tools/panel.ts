@@ -8,6 +8,12 @@ const panelAnalysisItemSchema = z.object({
   status: z.string().optional().describe("Optional status key, e.g. pass, fail, warn. Used when color is not provided."),
   color: z.string().optional().describe("Optional CSS/hex color, e.g. #e05a5a, rgb(224,90,90), red."),
   label: z.string().optional().describe("Optional legend label for this item or status group."),
+  opacity: z
+    .number()
+    .min(0)
+    .max(1)
+    .optional()
+    .describe("Mesh opacity 0–1 for this element (0 = invisible, 1 = opaque). Use with defaultOpacity to ghost context."),
 });
 
 export function registerPanelTools(server: McpServer) {
@@ -32,10 +38,17 @@ export function registerPanelTools(server: McpServer) {
 
   server.tool(
     "panel_set_analysis",
-    "Color elements already loaded in the Agent Canvas panel according to analysis status/color. Does not regenerate geometry.",
+    "Color and/or set opacity on elements already loaded in the Agent Canvas. Does not regenerate geometry. Use opacity + defaultOpacity to highlight focus elements while ghosting the rest.",
     {
       input: z.object({
         items: z.array(panelAnalysisItemSchema).min(1).describe("Analysis items to apply to the loaded panel geometry."),
+        defaultOpacity: z
+          .number()
+          .min(0)
+          .max(1)
+          .nullable()
+          .optional()
+          .describe("Opacity 0–1 for meshes not listed in items (ghost context). Pass null to clear."),
       }),
     },
     async (args) => {
@@ -44,6 +57,81 @@ export function registerPanelTools(server: McpServer) {
         return { content: [{ type: "text" as const, text: JSON.stringify(response, null, 2) }] };
       } catch (error) {
         return { content: [{ type: "text" as const, text: `panel_set_analysis failed: ${error instanceof Error ? error.message : String(error)}` }] };
+      }
+    }
+  );
+
+  const panelVec3Schema = z.union([
+    z.tuple([z.number(), z.number(), z.number()]),
+    z.object({ x: z.number(), y: z.number(), z: z.number() }),
+  ]).describe("XYZ in Revit internal feet, same space as panel_show_geometry meshes.");
+
+  const panelPlaneSchema = z.object({
+    origin: panelVec3Schema.describe("Any point on the plane."),
+    normal: panelVec3Schema.describe("Plane normal (need not be unit length)."),
+  });
+
+  const panelAnnotationSchema = z.object({
+    kind: z
+      .enum(["distance", "point-point", "point-plane", "plane-plane", "angle", "marker"])
+      .optional()
+      .describe("Annotation type. Default distance when start+end are set."),
+    // distance / point-point
+    start: panelVec3Schema.optional().describe("Distance start point."),
+    end: panelVec3Schema.optional().describe("Distance end point."),
+    offset: panelVec3Schema.optional().describe("Optional offset for the dimension line (distance only)."),
+    // point-plane
+    point: panelVec3Schema.optional().describe("Point for point-plane or marker."),
+    plane: panelPlaneSchema.optional().describe("Plane for point-plane."),
+    planeOrigin: panelVec3Schema.optional().describe("Flattened plane origin for point-plane."),
+    planeNormal: panelVec3Schema.optional().describe("Flattened plane normal for point-plane."),
+    // plane-plane
+    planeA: panelPlaneSchema.optional(),
+    planeB: panelPlaneSchema.optional(),
+    originA: panelVec3Schema.optional(),
+    normalA: panelVec3Schema.optional(),
+    originB: panelVec3Schema.optional(),
+    normalB: panelVec3Schema.optional(),
+    // angle (a–vertex–c, or points: [a, vertex, c])
+    vertex: panelVec3Schema.optional(),
+    a: panelVec3Schema.optional(),
+    c: panelVec3Schema.optional(),
+    points: z.array(panelVec3Schema).min(3).max(3).optional()
+      .describe("Angle shortcut: [pointA, vertex, pointC]."),
+    // common
+    label: z
+      .string()
+      .optional()
+      .describe("Optional check note prefix, e.g. 'corridor clear width'. Measured m/mm or degrees is always appended."),
+    color: z.string().optional().describe("CSS/hex color for the label pill."),
+    id: z.string().optional().describe("Optional id for agent bookkeeping."),
+  });
+
+  server.tool(
+    "panel_set_annotations",
+    "Draw 3D measure overlays in Agent Canvas Model as space-check references: point–point / point–plane / plane–plane distances (auto-labeled in m or mm) and angles (°). Optional label/note is a prefix; the measured value is always shown. Coordinates are Revit feet (same as panel meshes). Replaces the previous set. Pass items: [] to clear. Switches to Model.",
+    {
+      input: z.object({
+        items: z
+          .array(panelAnnotationSchema)
+          .describe("Annotations to show. Empty array clears all panel annotations."),
+      }),
+    },
+    async (args) => {
+      try {
+        const response = await withRevitConnection((client) =>
+          client.sendCommand("panel_set_annotations", args.input)
+        );
+        return { content: [{ type: "text" as const, text: JSON.stringify(response, null, 2) }] };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `panel_set_annotations failed: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
       }
     }
   );
@@ -171,10 +259,13 @@ export function registerPanelTools(server: McpServer) {
 
   server.tool(
     "panel_clear",
-    "Clear the Agent Canvas panel content and delete temporary geometry files. target is 'model', 'report', or 'all' (default all).",
+    "Clear the Agent Canvas panel content and delete temporary geometry files. target is 'model', 'report', 'annotations', or 'all' (default all).",
     {
       input: z.object({
-        target: z.enum(["model", "report", "all"]).optional().describe("Which panel content to clear. Default all."),
+        target: z
+          .enum(["model", "report", "annotations", "all"])
+          .optional()
+          .describe("Which panel content to clear. Default all."),
       }).optional(),
     },
     async (args) => {

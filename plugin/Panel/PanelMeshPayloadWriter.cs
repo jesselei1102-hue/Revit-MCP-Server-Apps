@@ -209,5 +209,7 @@ namespace revit_mcp_plugin.Panel
         public string Status { get; set; }
         public string Color { get; set; }
         public string Label { get; set; }
+        /// <summary>0–1 mesh opacity in the Agent Canvas. Null keeps the panel default.</summary>
+        public double? Opacity { get; set; }
     }
 }

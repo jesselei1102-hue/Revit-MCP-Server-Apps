@@ -31,6 +31,7 @@ namespace revit_mcp_plugin.Panel
             {
                 new PanelShowGeometryCommand(uiApp),
                 new PanelSetAnalysisCommand(uiApp),
+                new PanelSetAnnotationsCommand(uiApp),
                 new PanelShowReportCommand(uiApp),
                 new PanelSetViewCommand(uiApp),
                 new PanelFitCommand(uiApp),
@@ -115,15 +116,65 @@ namespace revit_mcp_plugin.Panel
                     if (elementId <= 0)
                         continue;
 
+                    double? opacity = null;
+                    if (obj.TryGetValue("opacity", out JToken opacityToken) && opacityToken != null && opacityToken.Type != JTokenType.Null)
+                    {
+                        double raw = opacityToken.Value<double>();
+                        if (raw < 0) raw = 0;
+                        if (raw > 1) raw = 1;
+                        opacity = raw;
+                    }
+
                     items.Add(new PanelAnalysisItem
                     {
                         ElementId = elementId,
                         Status = obj.Value<string>("status"),
                         Color = obj.Value<string>("color"),
                         Label = obj.Value<string>("label"),
+                        Opacity = opacity,
                     });
                 }
             }
+
+            bool setDefaultOpacity = parameters != null && parameters.ContainsKey("defaultOpacity");
+            double? defaultOpacity = null;
+            if (setDefaultOpacity && parameters["defaultOpacity"] != null && parameters["defaultOpacity"].Type != JTokenType.Null)
+            {
+                double raw = parameters["defaultOpacity"].Value<double>();
+                if (raw < 0) raw = 0;
+                if (raw > 1) raw = 1;
+                defaultOpacity = raw;
+            }
+
+            HandlerInstance.SetItems(items, defaultOpacity, setDefaultOpacity);
+            if (!RaiseAndWaitForCompletion(10000))
+                throw CreateTimeoutException(CommandName);
+
+            return HandlerInstance.Result;
+        }
+    }
+
+    internal sealed class WaitablePanelSetAnalysisHandler : PanelSetAnalysisEventHandler, IWaitableExternalEventHandler
+    {
+    }
+
+    internal sealed class PanelSetAnnotationsCommand : ExternalEventCommandBase
+    {
+        private WaitablePanelSetAnnotationsHandler HandlerInstance => (WaitablePanelSetAnnotationsHandler)Handler;
+
+        public PanelSetAnnotationsCommand(UIApplication uiApp)
+            : base(new WaitablePanelSetAnnotationsHandler(), uiApp)
+        {
+        }
+
+        public override string CommandName => "panel_set_annotations";
+
+        public override object Execute(JObject parameters, string requestId)
+        {
+            JArray items = parameters?["items"] as JArray
+                ?? parameters?["annotations"] as JArray
+                ?? parameters?["dimensions"] as JArray
+                ?? new JArray();
 
             HandlerInstance.SetItems(items);
             if (!RaiseAndWaitForCompletion(10000))
@@ -133,7 +184,7 @@ namespace revit_mcp_plugin.Panel
         }
     }
 
-    internal sealed class WaitablePanelSetAnalysisHandler : PanelSetAnalysisEventHandler, IWaitableExternalEventHandler
+    internal sealed class WaitablePanelSetAnnotationsHandler : PanelSetAnnotationsEventHandler, IWaitableExternalEventHandler
     {
     }
 
