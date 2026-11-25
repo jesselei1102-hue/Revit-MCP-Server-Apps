@@ -39,6 +39,20 @@ namespace revit_mcp_plugin.Panel
 
         /// <summary>Faces successfully triangulated for this element (runtime extract budget).</summary>
         public int FacesEmitted { get; set; }
+
+        /// <summary>Level the element belongs to (its LevelId, or the level just below its bounding box). Null for links and unplaced elements.</summary>
+        public long? LevelId { get; set; }
+    }
+
+    /// <summary>
+    /// A building level, so the Agent Canvas can stack, explode or cut the model by storey.
+    /// Elevation is in feet (Revit internal units).
+    /// </summary>
+    internal sealed class PanelMeshLevel
+    {
+        public long Id { get; set; }
+        public string Name { get; set; }
+        public double Elevation { get; set; }
     }
 
     /// <summary>
@@ -64,6 +78,8 @@ namespace revit_mcp_plugin.Panel
 
         public bool Truncated { get; set; }
         public int SkippedElements { get; set; }
+        /// <summary>Levels of the host document, lowest first.</summary>
+        public List<PanelMeshLevel> Levels { get; } = new();
 
         public long TotalVertices => Positions.Count / 3;
         public long TotalIndices => Indices.Count;

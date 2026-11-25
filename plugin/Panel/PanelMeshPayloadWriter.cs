@@ -74,6 +74,8 @@ namespace revit_mcp_plugin.Panel
                 };
                 if (element.CutColor.HasValue)
                     elementJson["cutColor"] = $"#{element.CutColor.Value:X6}";
+                if (element.LevelId.HasValue)
+                    elementJson["levelId"] = element.LevelId.Value;
                 elements.Add(elementJson);
             }
 
@@ -119,6 +121,7 @@ namespace revit_mcp_plugin.Panel
                 ["cutPlanes"] = cutPlanes,
                 ["sectionBoxCorners"] = sectionCorners,
                 ["elements"] = elements,
+                ["levels"] = new JArray(extraction.Levels.Select(l => new JObject { ["id"] = l.Id, ["name"] = l.Name ?? string.Empty, ["elevation"] = l.Elevation })),
                 ["positionsB64"] = Convert.ToBase64String(positionsBytes),
                 ["indicesB64"] = Convert.ToBase64String(indicesBytes),
             };

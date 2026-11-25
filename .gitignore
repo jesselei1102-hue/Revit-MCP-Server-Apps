@@ -372,3 +372,6 @@ FodyWeavers.xsd
 .claude/
 docs/superpowers/
 .DS_Store
+
+# Agent Canvas: extracted meshes and the demo payload are machine-local
+plugin/Panel/panel-view/tmp/
