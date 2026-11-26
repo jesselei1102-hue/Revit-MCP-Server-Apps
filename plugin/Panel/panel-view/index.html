@@ -44,50 +44,116 @@ button, select { font: inherit; color: inherit; }
 /* Shell */
 .shell { flex: none; display: flex; align-items: center; gap: 12px; height: 46px; padding: 0 10px 0 16px; background: var(--shell); color: var(--on-shell); }
 .mark { display: flex; align-items: center; gap: 8px; font: 600 15px/1 var(--num); letter-spacing: .03em; white-space: nowrap; }
-.shell select { flex: 1; min-width: 0; max-width: 480px; height: 30px; padding: 0 30px 0 10px; border-radius: 3px; border: 1px solid rgba(246,245,241,.28); background: transparent; color: var(--on-shell); appearance: none; cursor: pointer;
+.picker-wrap { flex: 1; min-width: 0; max-width: 520px; display: flex; align-items: center; gap: 8px; }
+.picker-lab { flex: none; font: 600 12px/1 var(--num); letter-spacing: .08em; text-transform: uppercase; color: var(--on-shell-2); }
+.shell select { flex: 1; min-width: 0; height: 30px; padding: 0 30px 0 10px; border-radius: 3px; border: 1px solid rgba(246,245,241,.28); background: transparent; color: var(--on-shell); appearance: none; cursor: pointer;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23bdbab2' stroke-width='1.5'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; }
 .shell select option { color: var(--ink); background: var(--paper); }
 .icon-btn { display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 3px; background: transparent; color: var(--on-shell); cursor: pointer; flex: none; }
 .icon-btn:hover { background: rgba(246,245,241,.12); }
-@media (max-width: 460px) { .mark span { display: none; } }
+.shell-btn { flex: none; height: 30px; padding: 0 10px; border-radius: 3px; border: 1px solid rgba(246,245,241,.28); background: transparent; color: var(--on-shell); cursor: pointer; font: 600 12px/1 var(--num); letter-spacing: .03em; white-space: nowrap; }
+.shell-btn:hover { background: rgba(246,245,241,.12); border-color: rgba(246,245,241,.45); }
+.shell-btn:disabled { opacity: .45; cursor: progress; }
+@media (max-width: 460px) { .mark span { display: none; } .shell-btn { padding: 0 8px; } }
 
-/* Answer */
-.answer { flex: none; padding: 10px 16px 10px; border-bottom: 1px solid var(--ink); display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: start; }
-.verdict { display: inline-flex; align-items: center; gap: 7px; font: 600 12.5px/1 var(--num); letter-spacing: .1em; text-transform: uppercase; }
-.outcome { grid-column: 1; margin: 5px 0 2px; font: 600 clamp(17px, .8vw + 13px, 21px)/1.25 var(--text); text-wrap: balance; max-width: 60ch; }
-.asked { grid-column: 1; margin: 0; font-size: 13px; color: var(--ink-2); }
+/* Answer — keep short so the model keeps the height in a docked Revit pane */
+.answer { flex: none; padding: 8px 14px 8px; border-bottom: 1px solid var(--ink); display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: start; }
+.verdict { display: inline-flex; align-items: center; gap: 7px; font: 600 12px/1 var(--num); letter-spacing: .1em; text-transform: uppercase; }
+.outcome { grid-column: 1; margin: 3px 0 0; font: 600 clamp(15px, .7vw + 12px, 18px)/1.25 var(--text); text-wrap: balance; max-width: 70ch; }
+.asked { grid-column: 1; margin: 0; font-size: 12.5px; color: var(--ink-2); }
 .asked q { quotes: "\201C" "\201D"; color: var(--ink); }
-.answer-tools { grid-column: 2; grid-row: 1 / span 3; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
-.chip-btn { height: 28px; padding: 0 10px; border: 1px solid var(--rule); border-radius: 3px; background: var(--paper); cursor: pointer; font: 600 12.5px/1 var(--num); letter-spacing: .03em; color: var(--ink-2); display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+.answer-tools { grid-column: 2; grid-row: 1 / span 3; display: flex; flex-direction: column; gap: 5px; align-items: flex-end; }
+.chip-btn { height: 26px; padding: 0 9px; border: 1px solid var(--rule); border-radius: 3px; background: var(--paper); cursor: pointer; font: 600 12px/1 var(--num); letter-spacing: .03em; color: var(--ink-2); display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
 .chip-btn:hover { border-color: var(--line); color: var(--ink); }
 .stale { flex: none; display: flex; gap: 8px; align-items: center; padding: 7px 16px; background: var(--attention-fill); font-size: 13px; }
 .stale svg { color: var(--attention); flex: none; }
+/* Narrow / short docked pane: collapse the question + put tools on one row */
+@media (max-width: 780px), (max-height: 820px) {
+  .answer { padding: 6px 12px; gap: 4px 8px; }
+  .outcome { font-size: 14.5px; line-height: 1.3; margin: 2px 0 0; }
+  .asked { display: none; }
+  .answer-tools { grid-column: 1 / -1; grid-row: auto; flex-direction: row; flex-wrap: wrap; justify-content: flex-start; align-items: center; }
+  .chip-btn { height: 24px; font-size: 11.5px; }
+}
 
-/* Canvas layouts */
+/* Canvas layouts — model keeps the majority of height in a stacked dock */
 .canvas { flex: 1; min-height: 0; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
 .canvas > * { min-width: 0; }
 .canvas[hidden] { display: none; }
 .canvas[data-layout="model-focus"], .canvas[data-layout="tour"] { grid-template-rows: 1fr auto; }
-.canvas[data-layout="model-and-list"] { grid-template-rows: minmax(260px, 58%) 1fr; }
-@media (min-width: 920px) { .canvas[data-layout="model-and-list"] { grid-template-rows: none; grid-template-columns: minmax(0, 1.6fr) minmax(340px, 1fr); } }
+.canvas[data-layout="model-and-list"] { grid-template-rows: minmax(0, 1fr) minmax(110px, 30%); }
+@media (max-height: 760px) { .canvas[data-layout="model-and-list"] { grid-template-rows: minmax(0, 1fr) minmax(96px, 26%); } }
+@media (min-width: 920px) { .canvas[data-layout="model-and-list"] { grid-template-rows: none; grid-template-columns: minmax(0, 1.75fr) minmax(280px, .9fr); } }
 
-.stage { position: relative; min-height: 0; overflow: hidden; background: linear-gradient(180deg, var(--sky) 0%, var(--horizon) 60%, var(--horizon) 100%); }
+.stage { position: relative; min-height: 0; overflow: hidden; background: linear-gradient(180deg, var(--sky) 0%, var(--horizon) 60%, var(--horizon) 100%); --browser-w: 22px; }
 .stage canvas { display: block; position: absolute; inset: 0; }
+/* Marks/leaders sit above the WebGL canvas; must not steal orbit/pan/dolly. */
+.marks { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
 .bar { position: absolute; display: flex; gap: 6px; flex-wrap: wrap; z-index: 3; }
-.bar.tl { top: 10px; left: 10px; right: 120px; }
+.bar.tl { top: 10px; left: calc(var(--browser-w) + 10px); right: 120px; }
 .bar.tr { top: 10px; right: 10px; justify-content: flex-end; }
 .seg { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--rule); border-radius: 3px; background: var(--paper); }
 .seg button { height: 26px; padding: 0 9px; border: 0; border-radius: 2px; background: transparent; cursor: pointer; font: 600 12.5px/1 var(--num); letter-spacing: .03em; color: var(--ink-2); white-space: nowrap; }
 .seg button:hover { color: var(--ink); background: var(--paper-2); }
 .seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
 .seg .lab { align-self: center; padding: 0 6px 0 4px; font: 500 12.5px/1 var(--num); letter-spacing: .02em; color: var(--ink-3); }
-.stage-title { position: absolute; left: 12px; bottom: 12px; z-index: 2; font: 500 13px/1.3 var(--num); letter-spacing: .02em; color: var(--ink-2); pointer-events: none; max-width: 60%; }
+.seg.explode-scale { align-items: center; gap: 6px; padding: 3px 8px 3px 4px; }
+.seg.explode-scale input[type="range"] { width: 96px; height: 22px; margin: 0; accent-color: var(--ink); cursor: pointer; }
+.seg.explode-scale .num { min-width: 2.6em; padding: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.browser { position: absolute; left: 0; top: 0; bottom: 0; z-index: 6; width: var(--browser-w, 220px); display: flex; flex-direction: column; background: color-mix(in srgb, var(--paper) 96%, transparent); border: 0; border-right: 1px solid var(--rule); border-radius: 0; overflow: hidden; }
+.browser.collapsed { width: 22px; background: color-mix(in srgb, var(--paper) 88%, transparent); }
+.browser.collapsed #browser-body { display: none; }
+.browser.collapsed .browser-resize { display: none; }
+.browser.collapsed .browser-toggle { height: auto; flex: 1; padding: 0; text-align: center; font-size: 14px; letter-spacing: 0; }
+.browser-head { display: flex; align-items: stretch; flex: none; min-height: 28px; border-bottom: 1px solid var(--rule); }
+.browser.collapsed .browser-head { flex: 1; border-bottom: 0; }
+.browser-toggle { flex: 1; height: 28px; border: 0; background: transparent; text-align: left; padding: 0 10px; font: 600 12px/1 var(--num); cursor: pointer; color: var(--ink); }
+.browser.collapsed .browser-toggle:hover { color: var(--ring, #2563c9); background: color-mix(in srgb, var(--paper) 96%, transparent); }
+.browser-resize { position: absolute; top: 0; right: -3px; width: 6px; bottom: 0; cursor: ew-resize; z-index: 7; }
+.browser-resize:hover, .browser.resizing .browser-resize { background: color-mix(in srgb, var(--ring, #2563c9) 45%, transparent); }
+.pop h3, .inspect h3, .detail h3 { cursor: grab; touch-action: none; }
+.browser-body { overflow: auto; padding: 6px 8px 10px; }
+.browser-actions { display: flex; gap: 6px; margin: 0 0 8px; }
+.browser-actions button { flex: 1; height: 24px; border: 1px solid var(--rule); border-radius: 2px; background: var(--paper); color: var(--ink-2); font: 600 11px/1 var(--num); cursor: pointer; }
+.browser-actions button:hover { color: var(--ink); border-color: var(--ink-3); }
+.browser-body details { margin: 0 0 8px; }
+.browser-body summary { cursor: pointer; font: 600 11px/1.4 var(--num); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.browser-body label { display: flex; gap: 6px; align-items: center; padding: 3px 0; font-size: 12.5px; cursor: pointer; min-width: 0; }
+.browser-body label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browser-body .count { margin-left: auto; color: var(--ink-3); font: 600 11px/1 var(--num); flex: none; }
+.browser-model { display: grid; grid-template-columns: 1fr auto; gap: 2px 6px; align-items: center; padding: 3px 0; }
+.browser-model label { padding: 0; }
+.browser-model .link-tools { display: flex; gap: 4px; align-items: center; }
+.browser-model input[type="color"] { width: 22px; height: 18px; padding: 0; border: 1px solid var(--rule); background: transparent; cursor: pointer; }
+.browser-model input[type="range"] { width: 56px; height: 18px; margin: 0; accent-color: var(--ink); cursor: pointer; }
+.browser-model .op { font: 600 10px/1 var(--num); color: var(--ink-3); min-width: 2.2em; }
+.filter-pop h4 { margin: 10px 0 6px; font: 600 11px/1 var(--num); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.filter-pop .hint { margin: 0 0 8px; color: var(--ink-3); font-size: 12px; }
+.fchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.fchip { height: 26px; padding: 0 8px; border: 1px solid var(--rule); border-radius: 99px; background: var(--paper); color: var(--ink-2); cursor: pointer; font: 600 12px/1 var(--num); }
+.fchip b { font-weight: 600; opacity: .65; margin-left: 4px; }
+.fchip.on { background: var(--ink); color: var(--paper); border-color: transparent; }
+.link-pop .row { display: flex; gap: 6px; margin: 0 0 8px; }
+.link-row { display: grid; grid-template-columns: 1fr 28px 78px 36px 22px; gap: 6px; align-items: center; padding: 5px 0; border-top: 1px solid var(--rule); }
+.link-row label { display: flex; gap: 8px; align-items: center; min-width: 0; font-size: 13px; cursor: pointer; }
+.link-row label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link-row input[type="color"] { width: 28px; height: 22px; padding: 0; border: 1px solid var(--rule); background: transparent; cursor: pointer; }
+.link-row input[type="range"] { width: 78px; margin: 0; accent-color: var(--ink); }
+.link-row .op { font: 600 11px/1 var(--num); color: var(--ink-3); text-align: right; }
+.link-row .clear { width: 22px; height: 22px; padding: 0; border: 0; background: transparent; color: var(--ink-3); cursor: pointer; }
+.stage-title { position: absolute; left: calc(var(--browser-w) + 12px); bottom: 10px; z-index: 2; font: 500 12.5px/1.3 var(--num); letter-spacing: .02em; color: var(--ink-2); pointer-events: auto; cursor: pointer; max-width: 70%; padding: 2px 4px; border-radius: 2px; }
+.stage-title:hover { color: var(--ink); background: color-mix(in srgb, var(--paper) 72%, transparent); }
 .stage-title b { font-weight: 700; color: var(--ink); margin-right: 6px; }
 .scale-t { position: absolute; transform: translate(-50%, 6px); pointer-events: none; font: 500 12px/1 var(--num); color: var(--ink-2); }
 .lvl.quiet { color: var(--ink-3); font-weight: 600; }
 .compass { position: absolute; right: 12px; bottom: 12px; width: 40px; height: 40px; z-index: 2; pointer-events: none; }
-.marks { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
-.leaders { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.inspect { position: absolute; left: calc(var(--browser-w) + 12px); bottom: 36px; z-index: 6; width: min(280px, calc(100% - 24px)); padding: 10px 12px; background: var(--paper); border: 1px solid var(--ink); border-radius: 3px; box-shadow: var(--pop-shadow); }
+.inspect h3 { margin: 0 0 8px; font: 600 14px/1.3 var(--text); }
+.inspect dl { display: grid; grid-template-columns: 64px 1fr; gap: 3px 8px; margin: 0; font-size: 12.5px; }
+.inspect dt { color: var(--ink-3); }
+.inspect dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inspect button { margin-top: 8px; }
+.leaders { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .callout { position: absolute; transform: translate(calc(-50% + var(--dx, 0px)), calc(-100% - var(--dy, 0px))); pointer-events: auto; cursor: pointer; display: flex; flex-direction: column; align-items: center; border: 0; padding: 0; background: none; transition: opacity 160ms ease-out; }
 .callout b { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--ink); color: var(--paper); font: 700 13px/1 var(--num); box-shadow: 0 0 0 2px var(--paper); }
 .callout i { width: 1.5px; height: var(--lift, 20px); background: var(--ink); }
@@ -102,34 +168,43 @@ button, select { font: inherit; color: inherit; }
 .lvl::after { content: ""; position: absolute; right: 0; top: 50%; width: 8px; border-top: 1px dashed var(--ink-3); }
 .tip { position: absolute; z-index: 5; pointer-events: none; padding: 6px 9px; border-radius: 3px; background: var(--ink); color: var(--paper); font-size: 13px; white-space: nowrap; transform: translate(12px, 14px); box-shadow: var(--pop-shadow); }
 
-/* Findings strip (model-focus) */
+/* Findings strip (model-focus) — keep short so the stage stays dominant */
 .strip { border-top: 1px solid var(--ink); background: var(--paper); }
-.strip-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px 6px 16px; }
-.strip-head h2 { margin: 0; font: 700 14px/1.2 var(--num); letter-spacing: .04em; }
-.strip-head .legend { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12.5px; color: var(--ink-2); margin-left: auto; }
-.legend span { display: inline-flex; align-items: center; gap: 6px; }
-.sw { width: 12px; height: 12px; flex: none; border: 1.5px solid; border-radius: 1px; }
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); column-gap: 24px; max-height: 172px; overflow-y: auto; padding: 0 16px 10px; scrollbar-width: thin; }
-@media (max-width: 560px) { .cards { max-height: 124px; } }
-.fcard { text-align: left; border: 0; border-top: 1px solid var(--rule); border-radius: 0; background: transparent; padding: 8px 4px 9px; cursor: pointer; display: grid; grid-template-columns: auto 1fr; gap: 2px 9px; align-items: start; }
+.strip-head { display: flex; align-items: center; gap: 8px; padding: 5px 10px 3px 12px; }
+.strip-head h2 { margin: 0; font: 700 13px/1.2 var(--num); letter-spacing: .04em; }
+.strip-head .legend { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 12px; color: var(--ink-2); margin-left: auto; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.sw { width: 11px; height: 11px; flex: none; border: 1.5px solid; border-radius: 1px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); column-gap: 16px; max-height: 128px; overflow-y: auto; padding: 0 12px 6px; scrollbar-width: thin; }
+@media (max-width: 720px), (max-height: 820px) {
+  .cards { max-height: 96px; grid-template-columns: 1fr; }
+  .fcard .r { display: none; }
+  .fcard .v b { font-size: 15px; }
+}
+.fcard { text-align: left; border: 0; border-top: 1px solid var(--rule); border-radius: 0; background: transparent; padding: 5px 4px 6px; cursor: pointer; display: grid; grid-template-columns: auto 1fr; gap: 1px 8px; align-items: start; }
 .fcard:hover { background: var(--paper-2); }
 .fcard[aria-pressed="true"] { background: var(--paper-2); box-shadow: inset 2px 0 0 var(--ring); }
-.fcard .mk, .mk { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--ink); color: var(--paper); font: 700 12.5px/1 var(--num); flex: none; }
+.fcard .mk, .mk { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--ink); color: var(--paper); font: 700 12px/1 var(--num); flex: none; }
 .fcard[aria-pressed="true"] .mk { background: var(--ring); }
-.fcard .t { font-weight: 600; font-size: 13.5px; line-height: 1.3; }
-.fcard .v { grid-column: 2; display: flex; align-items: baseline; gap: 6px; }
-.fcard .v b { font: 700 18px/1 var(--num); }
-.fcard .v span { font: 500 12.5px/1 var(--num); color: var(--ink-3); }
-.fcard .r { grid-column: 2; font-size: 12.5px; font-weight: 600; }
+.fcard .t { font-weight: 600; font-size: 12.5px; line-height: 1.25; }
+.fcard .v { grid-column: 2; display: flex; align-items: baseline; gap: 5px; }
+.fcard .v b { font: 700 16px/1 var(--num); }
+.fcard .v span { font: 500 11.5px/1 var(--num); color: var(--ink-3); }
+.fcard .r { grid-column: 2; font-size: 11.5px; font-weight: 600; }
 
-/* Selected detail */
-.detail { position: absolute; left: 10px; bottom: 60px; z-index: 4; width: min(320px, calc(100% - 20px)); padding: 12px 14px; background: var(--paper); border: 1px solid var(--ink); box-shadow: var(--pop-shadow); }
-.detail h3 { margin: 0 0 2px; font: 600 15px/1.3 var(--text); }
-.detail p { margin: 0 0 8px; font-size: 13px; color: var(--ink-2); }
+/* Selected detail — compact so it does not bury the model in a narrow pane */
+.detail { position: absolute; left: calc(var(--browser-w) + 10px); bottom: 44px; z-index: 4; width: min(280px, calc(100% - 20px)); padding: 9px 11px; background: var(--paper); border: 1px solid var(--ink); box-shadow: var(--pop-shadow); }
+.detail h3 { margin: 0 0 1px; font: 600 14px/1.25 var(--text); }
+.detail p { margin: 0 0 5px; font-size: 12.5px; color: var(--ink-2); }
 .detail .why { font-weight: 600; }
-.detail dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0 0 10px; font-size: 13px; }
+.detail dl { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; margin: 0 0 8px; font-size: 12.5px; }
 .detail dt { color: var(--ink-3); }
-.detail dd { margin: 0; font-family: var(--num); font-size: 14px; }
+.detail dd { margin: 0; font-family: var(--num); font-size: 13px; }
+.detail .btn { height: 28px; padding: 0 10px; font-size: 12.5px; }
+@media (max-width: 720px) {
+  .detail { left: auto; right: 8px; bottom: 40px; width: min(240px, calc(100% - 16px)); padding: 8px 10px; }
+  .detail dl { display: none; }
+}
 .btn { height: 32px; padding: 0 12px; border-radius: 3px; border: 1px solid var(--ink); background: transparent; cursor: pointer; font: 600 13px/1 var(--text); display: inline-flex; gap: 7px; align-items: center; color: var(--ink); }
 .btn:hover { background: var(--paper-2); }
 .btn.primary { background: var(--ink); color: var(--paper); }
@@ -137,26 +212,29 @@ button, select { font: inherit; color: inherit; }
 .btn:disabled { opacity: .4; cursor: default; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; }
 
-/* List panel (model-and-list) */
-.panel { min-height: 0; overflow: auto; border-top: 1px solid var(--ink); padding: 4px 16px 32px; }
-@media (min-width: 920px) { .panel { border-top: 0; border-left: 1px solid var(--rule); padding: 8px 20px 40px; } }
-.panel h2 { margin: 14px 0 8px; font: 700 14.5px/1.2 var(--num); letter-spacing: .04em; }
-.figrow { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--rule); font-size: 13.5px; }
-.figrow b { font: 600 19px/1 var(--num); white-space: nowrap; }
-.figrow b small { font: 500 13px/1 var(--num); color: var(--ink-3); margin-left: 3px; }
-.filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
-.chip { height: 28px; padding: 0 9px; border-radius: 3px; border: 1px solid var(--rule); background: transparent; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--ink-2); }
-.chip b { font: 600 13.5px/1 var(--num); color: var(--ink); }
+/* List panel (model-and-list) — denser rows; stage keeps the height */
+.panel { min-height: 0; overflow: auto; border-top: 1px solid var(--ink); padding: 2px 12px 16px; scrollbar-width: thin; }
+@media (min-width: 920px) { .panel { border-top: 0; border-left: 1px solid var(--rule); padding: 6px 14px 24px; } }
+.panel h2 { margin: 8px 0 4px; font: 700 13px/1.2 var(--num); letter-spacing: .04em; }
+.panel h2:first-child { margin-top: 6px; }
+.figrow { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; padding: 5px 0; border-bottom: 1px solid var(--rule); font-size: 13px; }
+.figrow b { font: 600 16px/1 var(--num); white-space: nowrap; }
+.figrow b small { font: 500 12px/1 var(--num); color: var(--ink-3); margin-left: 3px; }
+.filters { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 4px; }
+.chip { min-height: 24px; height: auto; padding: 3px 8px; border-radius: 3px; border: 1px solid var(--rule); background: transparent; cursor: pointer; display: inline-flex; gap: 5px; align-items: center; font-size: 12px; color: var(--ink-2); white-space: normal; text-align: left; max-width: 100%; }
+.chip b { font: 600 12.5px/1 var(--num); color: var(--ink); }
 .chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 .chip[aria-pressed="true"] b { color: var(--paper); }
 .items { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--ink); }
-.items li { display: grid; grid-template-columns: 24px 1fr auto; gap: 2px 10px; align-items: center; padding: 8px 6px; border-bottom: 1px solid var(--rule); cursor: pointer; }
+.items li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 1px 8px; align-items: start; padding: 6px 4px; border-bottom: 1px solid var(--rule); cursor: pointer; }
 .items li:hover { background: var(--paper-2); }
 .items li[aria-selected="true"] { background: var(--paper-2); box-shadow: inset 2px 0 0 var(--ring); }
-.items .t { font-weight: 600; font-size: 13.5px; line-height: 1.3; }
-.items .s { grid-column: 2; font-size: 12.5px; color: var(--ink-3); }
-.items .st { grid-row: 1 / span 2; grid-column: 3; display: inline-flex; gap: 6px; align-items: center; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
-.items .dot { width: 22px; display: grid; place-items: center; }
+.items .t { grid-column: 2; font-weight: 600; font-size: 13px; line-height: 1.25; }
+.items .s { grid-column: 2; font-size: 11.5px; color: var(--ink-3); }
+.items .st { grid-column: 2; display: flex; gap: 5px; align-items: flex-start; font-size: 12px; font-weight: 600; line-height: 1.35; white-space: normal; }
+.items .st .sw { margin-top: 2px; }
+.items .dot { grid-row: 1 / span 3; width: 20px; display: grid; place-items: center; }
+.items .mk { width: 20px; height: 20px; font-size: 11.5px; }
 
 /* Tour card */
 .tour { border-top: 1px solid var(--ink); background: var(--paper); padding: 12px 16px 14px; display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; align-items: end; }
@@ -177,6 +255,11 @@ button, select { font: inherit; color: inherit; }
 .pop dt { color: var(--ink-3); }
 .pop dd { margin: 0; }
 .pop ul { margin: 0; padding-left: 16px; }
+.load-bar { flex: none; display: none; align-items: center; gap: 10px; height: 28px; padding: 0 14px; background: var(--paper-2); border-bottom: 1px solid var(--rule); }
+.load-bar.on { display: flex; }
+.load-bar .track { flex: 1; height: 6px; border-radius: 3px; background: var(--rule); overflow: hidden; }
+.load-bar .fill { height: 100%; width: 0; background: var(--ring, #2563c9); transition: width 180ms linear; }
+.load-bar span { flex: none; max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 11.5px/1 var(--num); color: var(--ink-2); }
 .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%) translateY(10px); opacity: 0; pointer-events: none; max-width: min(440px, calc(100vw - 32px)); padding: 10px 14px; border-radius: 3px; background: var(--ink); color: var(--paper); font-size: 13.5px; box-shadow: var(--pop-shadow); transition: opacity 180ms ease-out, transform 220ms cubic-bezier(.16,1,.3,1); z-index: 30; }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 @media (prefers-reduced-motion: reduce) { .toast, .callout { transition: none; } }
@@ -185,13 +268,23 @@ button, select { font: inherit; color: inherit; }
 <body>
 <header class="shell">
   <div class="mark"><svg width="18" height="20" viewBox="0 0 18 20" aria-hidden="true"><path d="M1 1h11l5 5v13H1z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 1v5h5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M4 10h7M4 13.5h10M4 17h5" stroke="currentColor" stroke-width="1.4"/></svg><span>Agent Canvas</span></div>
-  <select id="picker" aria-label="Choose a result"></select>
+  <label class="picker-wrap" for="picker"><span class="picker-lab">Results</span>
+  <select id="picker" aria-label="Choose a previous result to show again"></select></label>
+  <button class="shell-btn" id="load-view" type="button" title="Load geometry from the active Revit view into this canvas">Load current view</button>
   <button class="icon-btn" id="theme" type="button" aria-label="Switch light or dark"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="7.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M9 1.8a7.2 7.2 0 0 1 0 14.4z" fill="currentColor"/></svg></button>
 </header>
+<div id="load-bar" class="load-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><div class="track"><div class="fill" id="load-fill"></div></div><span id="load-label">Loading…</span></div>
 <div id="stale"></div>
 <section class="answer" id="answer" aria-live="polite"></section>
 <main class="canvas" id="canvas">
   <div class="stage" id="stage">
+    <aside id="browser" class="browser collapsed">
+      <div class="browser-head">
+        <button type="button" id="browser-toggle" aria-expanded="false" title="Show or hide the filter">Filter</button>
+      </div>
+      <div id="browser-body" class="browser-body"></div>
+      <div class="browser-resize" id="browser-resize" title="Drag to resize"></div>
+    </aside>
     <div class="bar tl" id="bar-left"></div>
     <div class="bar tr" id="bar-right"></div>
     <div class="marks" id="marks"></div>
@@ -222,7 +315,12 @@ const $ = (s, el = document) => el.querySelector(s);
 const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const WORD = { fail: "Fails", attention: "Needs attention", pass: "Passes", info: "For information" };
 const LAYOUT_NAME = { "model-focus": "Model focus", "model-and-list": "Model and list", tour: "Walk-through", report: "Report" };
-const SHOW_NAME = { "failures-only": "Only failures", "in-context": "In context", everything: "Everything" };
+const SHOW_NAME = { "failures-only": "Failures", "in-context": "Shell + fails", everything: "Full model" };
+const SHOW_TIP = {
+  "failures-only": "Only result elements in colour; building as thin x-ray; other MEP/furniture hidden",
+  "in-context": "Building shell readable; MEP/furniture dimmed; failures bright",
+  everything: "Full model at normal materials; failures still highlighted",
+};
 const PROBLEM = ["fail", "attention", "cat1", "cat2"];
 const fmt = (n, unit) => { if (typeof n !== "number") return esc(n); const d = unit === "m" ? 2 : Number.isInteger(n) ? 0 : 1; return (n < 0 ? "−" : "") + Math.abs(n).toLocaleString("en-GB", { minimumFractionDigits: d, maximumFractionDigits: d }) + (unit ? (unit === "%" ? "%" : " " + unit) : ""); };
 const causeOf = sub => { const o = (sub.related || []).map(id => (window.CANVAS_SAMPLES && window.CANVAS_SAMPLES.ELEMENTS.get(id)) || viewer.info(id)).find(e => e && e.name); return o ? `Under the ${o.name.charAt(0).toLowerCase() + o.name.slice(1)}` : ""; };
@@ -230,10 +328,23 @@ function sw(st) { const pat = { fail: `repeating-linear-gradient(45deg, var(--fa
 
 const specs = [];   // results shown in this session (demo: the sample set; Revit: each result the agent sends)
 const picker = $("#picker");
-function addResult(s) { [...picker.options].filter(o => o.value === "-1").forEach(o => o.remove()); specs.push(s); picker.add(new Option(s.title || s.question || `Result ${specs.length}`, specs.length - 1)); picker.disabled = false; return specs.length - 1; }
+function addResult(s, opts) {
+  const restore = opts && opts.restore;
+  // Same question re-sent after a geometry reload: reuse the existing picker row instead of duplicating.
+  if (restore) {
+    const key = (s.title || s.question || "").trim();
+    const existing = key ? specs.findIndex(x => ((x.title || x.question || "").trim() === key)) : -1;
+    if (existing >= 0) { specs[existing] = s; picker.options[existing] && (picker.options[existing].text = key || `Result ${existing + 1}`); return existing; }
+  }
+  [...picker.options].filter(o => o.value === "-1").forEach(o => o.remove());
+  specs.push(s);
+  picker.add(new Option(s.title || s.question || `Result ${specs.length}`, specs.length - 1));
+  picker.disabled = false;
+  return specs.length - 1;
+}
 const stage = $("#stage"), canvas = $("#canvas"), marks = $("#marks");
 const viewer = AgentCanvas3D.createViewer(stage);
-const st = { spec: null, layout: "model-focus", selected: null, filter: "all", step: 0, exploring: false, pop: null };
+const st = { spec: null, layout: "model-focus", selected: null, hovered: null, filter: "all", step: 0, exploring: false, pop: null };
 
 let toastT; function toast(m) { const t = $("#toast"); t.textContent = m; t.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 3400); }
 const label = (s, status) => (s.view.legend.find(l => l.status === status) || {}).label || WORD[status] || status;
@@ -275,20 +386,192 @@ function renderAnswer() {
     <div class="answer-tools"><button class="chip-btn" type="button" data-pop="layout" aria-expanded="false" title="Why the agent chose this layout"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="1" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M1 7h10M7 1v6" stroke="currentColor" stroke-width="1.3"/></svg>Why this layout: ${LAYOUT_NAME[st.layout]}</button>
     <button class="chip-btn" type="button" data-pop="source" aria-expanded="false">How this was checked</button></div>`;
 }
-function seg(name, label, opts, current, attr) {
-  return `<div class="seg" role="group" aria-label="${esc(label)}">${name ? `<span class="lab">${esc(name)}</span>` : ""}${opts.map(([v, t]) => `<button type="button" ${attr}="${v}" aria-pressed="${v === current}">${esc(t)}</button>`).join("")}</div>`;
+function shortLink(name) {
+  const file = String(name || "Link").split(" : ")[0].replace(/\.rvt$/i, "");
+  return file.length > 28 ? file.slice(0, 26) + "…" : file;
 }
-function renderBars() {
+function spaceButtonHtml() {
+  const n = viewer.spaceCount();
+  if (!n) return "";
+  const on = viewer.spacesVisible();
+  return `<div class="seg"><button type="button" id="space-toggle" aria-pressed="${on}" title="Show or hide room and space volumes">Spaces ${on ? "on" : "off"}</button></div>`;
+}
+function linkButtonHtml() {
+  // Visibility, overlay colour, and opacity live in the left Filter → Models list.
+  return "";
+}
+const ROLE_LABEL = {
+  wall: "Walls", curtain: "Curtain walls", glass: "Windows", door: "Doors",
+  slab: "Floors", roof: "Roofs", ceiling: "Ceilings",
+  stair: "Stairs", railing: "Railings", vertical: "Elevators / lifts",
+  struct: "Structure", mep: "MEP", plumbing: "Plumbing fixtures", light: "Lighting",
+  furn: "Furniture", equip: "Specialty equipment", site: "Site",
+  generic: "Generic models", volume: "Rooms / Spaces", other: "Other", link: "Links",
+};
+let browserWidth = 220;
+function modelRow(m) {
+  const label = m.id === "host" ? "Host" : shortLink(m.name);
+  const head = `<label><input type="checkbox" data-browser="models" data-browser-id="${esc(m.id)}" ${viewer.facetOn("models", m.id) ? "checked" : ""}><span title="${esc(m.id === "host" ? "Host" : m.name)}">${esc(label)}</span><span class="count">${m.count}</span></label>`;
+  if (m.id === "host" || !viewer.getLinkStyle) return `<div class="browser-model">${head}</div>`;
+  const st = viewer.getLinkStyle(m.id);
+  const op = typeof st.opacity === "number" ? st.opacity : 1;
+  return `<div class="browser-model">${head}<div class="link-tools">
+    <input type="color" data-link-color="${esc(m.id)}" value="${esc(st.color || "#c4bba6")}" title="Overlay colour" aria-label="Overlay colour">
+    <input type="range" min="0.15" max="1" step="0.05" data-link-opacity="${esc(m.id)}" value="${op}" title="Opacity" aria-label="Opacity">
+    <span class="op" data-op-lab>${Math.round(op * 100)}%</span>
+  </div></div>`;
+}
+function renderBrowser() {
+  const body = $("#browser-body");
+  if (!body || !viewer.facetSummary) return;
+  const sum = viewer.facetSummary();
+  const row = (kind, id, label, count) => `<label><input type="checkbox" data-browser="${kind}" data-browser-id="${esc(id)}" ${viewer.facetOn(kind, id) ? "checked" : ""}><span title="${esc(label)}">${esc(label)}</span><span class="count">${count}</span></label>`;
+  body.innerHTML = `<div class="browser-actions"><button type="button" data-browser-all title="Show everything">All</button><button type="button" data-browser-none title="Hide everything">None</button></div>
+    <details open><summary>Models</summary>${sum.models.map(modelRow).join("") || "<p>No model yet</p>"}</details>
+    <details open><summary>Categories</summary>${sum.roles.map(r => row("roles", r.id, ROLE_LABEL[r.id] || r.id, r.count)).join("")}</details>`;
+  syncBrowserToggle();
+}
+function setBrowserAll(visible) {
+  const sum = viewer.facetSummary ? viewer.facetSummary() : { models: [], roles: [] };
+  (sum.models || []).forEach(m => viewer.setFacetVisible("models", m.id, visible));
+  (sum.roles || []).forEach(r => viewer.setFacetVisible("roles", r.id, visible));
+  if (visible) viewer.clearFacet();
+  if (viewer.spaceCount && viewer.spaceCount() > 0) {
+    viewer.setSpacesVisible(visible);
+    const b = $("#space-toggle");
+    if (b) { const on = viewer.spacesVisible(); b.setAttribute("aria-pressed", String(on)); b.textContent = "Spaces " + (on ? "on" : "off"); }
+  }
+  renderBrowser();
+}
+function syncBrowserToggle() {
+  const pane = $("#browser");
+  const toggle = $("#browser-toggle");
+  if (!pane || !toggle) return;
+  const open = !pane.classList.contains("collapsed");
+  const on = viewer.facetActive && viewer.facetActive();
+  toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  toggle.textContent = open ? (on ? "Filter · on ‹" : "Filter ‹") : "›";
+  toggle.title = open ? "Hide filter" : (on ? "Show filter (active)" : "Show filter");
+  if (open) {
+    pane.style.width = browserWidth + "px";
+    stage.style.setProperty("--browser-w", browserWidth + "px");
+  } else {
+    pane.style.width = "";
+    stage.style.setProperty("--browser-w", "22px");
+  }
+}
+function bindBrowserResize() {
+  const handle = $("#browser-resize");
+  const pane = $("#browser");
+  if (!handle || !pane || handle.dataset.bound) return;
+  handle.dataset.bound = "1";
+  handle.addEventListener("pointerdown", event => {
+    if (event.button !== 0 || pane.classList.contains("collapsed")) return;
+    event.preventDefault();
+    pane.classList.add("resizing");
+    const startX = event.clientX;
+    const startW = pane.getBoundingClientRect().width;
+    function move(ev) {
+      browserWidth = Math.max(180, Math.min(420, startW + (ev.clientX - startX)));
+      pane.style.width = browserWidth + "px";
+      stage.style.setProperty("--browser-w", browserWidth + "px");
+    }
+    function up() {
+      pane.classList.remove("resizing");
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    }
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  });
+}
+bindBrowserResize();
+function closeFilterPop() { document.getElementById("filter-pop")?.remove(); document.getElementById("filter-menu")?.setAttribute("aria-expanded", "false"); }
+function syncFilterButton() { const b = $("#filter-menu"); if (b) b.textContent = viewer.facetActive() ? "Filter · on" : "Filter"; }
+function openFilterPop(btn) {
+  closeFilterPop();
+  const sum = viewer.facetSummary();
+  if ((!sum.roles.length && !sum.models.length) || !btn) return;
+  const chip = (kind, id, label, count) => `<button type="button" class="fchip${viewer.facetOn(kind, id) ? " on" : ""}" data-facet="${kind}" data-facet-id="${esc(id)}">${esc(label)} <b>${count}</b></button>`;
+  const el = document.createElement("div");
+  el.id = "filter-pop";
+  el.className = "pop filter-pop";
+  el.setAttribute("role", "dialog");
+  el.innerHTML = `<h3>Show in view</h3><p class="hint">Nothing selected shows everything. Pick categories or models to narrow the view.</p>
+    <div class="row"><button class="chip-btn" type="button" data-facet-clear>Show all</button></div>
+    ${sum.roles.length ? `<h4>Category</h4><div class="fchips">${sum.roles.map(r => chip("roles", r.id, ROLE_LABEL[r.id] || r.id, r.count)).join("")}</div>` : ""}
+    ${sum.models.length > 1 ? `<h4>Model</h4><div class="fchips">${sum.models.map(m => chip("models", m.id, shortLink(m.name), m.count)).join("")}</div>` : ""}`;
+  document.body.append(el);
+  const r = btn.getBoundingClientRect();
+  el.style.top = (r.bottom + 8) + "px";
+  el.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 320)) + "px";
+  btn.setAttribute("aria-expanded", "true");
+  bindFloat(el);
+}
+function closeLinkPop() { document.getElementById("link-pop")?.remove(); document.getElementById("link-menu")?.setAttribute("aria-expanded", "false"); }
+function syncLinkButton() {
+  const b = $("#link-menu"); if (!b) return;
+  const links = viewer.linkList();
+  const n = links.filter(l => !viewer.isLinkHidden(l.id)).length;
+  b.textContent = `Links ${n}/${links.length}`;
+}
+function openLinkPop(btn) {
+  closeLinkPop();
+  const links = viewer.linkList(); if (!links.length || !btn) return;
+  const el = document.createElement("div"); el.id = "link-pop"; el.className = "pop link-pop"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "Linked models");
+  el.innerHTML = `<h3>Linked models</h3><div class="row"><button class="chip-btn" type="button" data-links="all">All</button><button class="chip-btn" type="button" data-links="none">None</button></div>`
+    + links.map(l => {
+      const st = viewer.getLinkStyle(l.id);
+      const op = typeof st.opacity === "number" ? st.opacity : 1;
+      return `<div class="link-row"><label><input type="checkbox" data-link-id="${esc(l.id)}" ${viewer.isLinkHidden(l.id) ? "" : "checked"}><span title="${esc(l.name)}">${esc(shortLink(l.name))}</span></label><input type="color" data-link-color="${esc(l.id)}" value="${esc(st.color || "#c4bba6")}" title="Overlay colour" aria-label="Overlay colour for ${esc(shortLink(l.name))}"><input type="range" min="0.15" max="1" step="0.05" data-link-opacity="${esc(l.id)}" value="${op}" title="Opacity" aria-label="Opacity"><span class="op" data-op-lab>${Math.round(op * 100)}%</span><button class="clear" type="button" data-link-clear="${esc(l.id)}" title="Clear overlay colour" aria-label="Clear colour">×</button></div>`;
+    }).join("");
+  document.body.append(el);
+  const r = btn.getBoundingClientRect();
+  el.style.top = (r.bottom + 8) + "px";
+  el.style.left = Math.max(8, Math.min(r.left, window.innerWidth - el.offsetWidth - 8)) + "px";
+  btn.setAttribute("aria-expanded", "true");
+  bindFloat(el);
+}
+function seg(name, label, opts, current, attr) {
+  return `<div class="seg" role="group" aria-label="${esc(label)}">${name ? `<span class="lab">${esc(name)}</span>` : ""}${opts.map(([v, t, tip]) => `<button type="button" ${attr}="${v}" aria-pressed="${v === current}" title="${esc(tip || t)}">${esc(t)}</button>`).join("")}</div>`;
+}
+function renderBars(opts) {
+  const home = !opts || opts.home !== false;
   const p = viewer.presentation, s = st.spec;
   const hasProblems = s.subjects.some(x => PROBLEM.includes(x.status));
-  const showOpts = [["failures-only", hasProblems ? "Only failures" : "Only results"], ["in-context", "In context"], ["everything", "Everything"]];
+  const showOpts = [
+    ["failures-only", hasProblems ? "Failures" : "Results", SHOW_TIP["failures-only"]],
+    ["in-context", "Shell + fails", SHOW_TIP["in-context"]],
+    ["everything", "Full model", SHOW_TIP.everything],
+  ];
   const lvOpts = [["stacked", "Stacked"], ["exploded", "Exploded"]];
   const cutOpts = viewer.levelList.length <= 8 ? viewer.levelList.map(l => [l.id, shortLevel(l.name)]) : [];
-  $("#bar-left").innerHTML = seg("Show", "Show", showOpts, p.show, "data-show") + seg("Levels", "Levels", [...lvOpts, ...cutOpts.map(([v, t]) => ["cut:" + v, t])], p.levels === "cut" ? "cut:" + p.cutLevel : p.levels, "data-levels");
-  $("#bar-right").innerHTML = seg("", "View", [["3d", "3D"], ["plan", "Plan"]], p.view, "data-view") + `<div class="seg"><button type="button" id="home" aria-label="Frame the result">Home</button></div>`;
-  requestAnimationFrame(() => { const r = $("#bar-left").getBoundingClientRect(), r2 = $("#bar-right").getBoundingClientRect(), sr = stage.getBoundingClientRect(); viewer.setInsets(Math.max(r.bottom, r2.bottom) - sr.top + 8, 40); viewer.home(true); });
+  const spread = p.levels === "exploded"
+    ? `<div class="seg explode-scale" role="group" aria-label="Explode spread"><span class="lab">Spread</span><input type="range" id="explode-scale" min="0.2" max="2" step="0.05" value="${viewer.getExplodeScale()}" title="Explode spacing"><span class="lab num" id="explode-scale-val">${viewer.getExplodeScale().toFixed(2)}×</span></div>`
+    : "";
+  $("#bar-left").innerHTML = seg("Show", "Show", showOpts, p.show, "data-show") + seg("Levels", "Levels", [...lvOpts, ...cutOpts.map(([v, t]) => ["cut:" + v, t])], p.levels === "cut" ? "cut:" + p.cutLevel : p.levels, "data-levels") + spread;
+  $("#bar-right").innerHTML = seg("", "View", [["3d", "3D"], ["plan", "Plan"]], p.view, "data-view") + spaceButtonHtml() + linkButtonHtml() + `<div class="seg"><button type="button" id="home" aria-label="Frame the result">Home</button></div>`;
+  const spreadInput = $("#explode-scale");
+  if (spreadInput) {
+    spreadInput.addEventListener("input", () => {
+      const v = viewer.setExplodeScale(spreadInput.value, { noHome: true, instant: false });
+      const lab = $("#explode-scale-val"); if (lab) lab.textContent = v.toFixed(2) + "×";
+      spreadInput.setAttribute("aria-valuenow", String(v));
+    });
+    spreadInput.addEventListener("change", () => viewer.setExplodeScale(spreadInput.value, { noHome: false, instant: false }));
+  }
+  requestAnimationFrame(() => {
+    const r = $("#bar-left").getBoundingClientRect(), r2 = $("#bar-right").getBoundingClientRect(), sr = stage.getBoundingClientRect();
+    viewer.setInsets(Math.max(r.bottom, r2.bottom) - sr.top + 8, 40);
+    // Home reframes the whole result. Skip it after list/tour clicks — those already fly the camera.
+    if (home) viewer.home(true);
+  });
   const lv = p.levels === "cut" ? viewer.levelList.find(l => l.id === p.cutLevel) : null;
-  $("#stage-title").innerHTML = `<b>Fig. 1</b>${esc([lv ? `${lv.name}, cut at 1.25 m` : p.levels === "exploded" ? "All levels, exploded" : "All levels", SHOW_NAME[p.show].toLowerCase()].join(" · "))}`;
+  const title = $("#stage-title");
+  const explodeNote = p.levels === "exploded" ? `All levels, exploded ${viewer.getExplodeScale().toFixed(2)}×` : "All levels";
+  title.innerHTML = `<b>Fig. 1</b>${esc([lv ? `${lv.name}, cut at 1.25 m` : explodeNote, SHOW_NAME[p.show].toLowerCase()].join(" · "))}`;
+  title.title = "Click to reframe the model";
+  title.style.cursor = "pointer";
 }
 function legendHTML() { const s = st.spec; return s.view.legend.map(l => { const n = s.subjects.filter(x => x.status === l.status).length; return `<span>${sw(l.status)}${esc(l.label)}: <b class="num">${n}</b></span>`; }).join(""); }
 function valueOf(sub) {
@@ -313,7 +596,7 @@ function renderBelow() {
     const rows = list.filter(x => st.filter === "all" || x.status === st.filter);
     below.innerHTML = `${(s.figures || []).length ? `<h2>Key figures</h2>${s.figures.map(f => `<div class="figrow"><span>${esc(f.label)}</span><b>${fmt(f.value, f.unit)}${typeof f.of === "number" ? `<small>of ${f.of}</small>` : ""}</b></div>`).join("")}` : ""}
       <h2>Items</h2><div class="filters" role="group" aria-label="Filter items"><button class="chip" type="button" data-filter="all" aria-pressed="${st.filter === "all"}">All <b>${s.subjects.length}</b></button>${s.view.legend.filter(l => counts[l.status]).map(l => `<button class="chip" type="button" data-filter="${l.status}" aria-pressed="${st.filter === l.status}">${sw(l.status)}${esc(l.label)} <b>${counts[l.status]}</b></button>`).join("")}</div>
-      <ul class="items" role="listbox" aria-label="Items">${rows.map(x => { const i = co.indexOf(x.id); return `<li role="option" tabindex="0" data-id="${esc(x.id)}" aria-selected="${st.selected === x.id}"><span class="dot">${i >= 0 ? `<span class="mk">${i + 1}</span>` : ""}</span><span class="t">${esc(x.label)}</span><span class="s">${esc(x.place || x.level || "")}</span><span class="st" style="color:var(--${x.status})">${sw(x.status)}${esc(label(s, x.status))}</span></li>`; }).join("")}</ul>`;
+      <ul class="items" role="listbox" aria-label="Items">${rows.map(x => { const i = co.indexOf(x.id); const statusText = label(s, x.status); const reason = String(x.reason || "").trim(); const desc = reason && reason !== statusText ? `${statusText} — ${reason}` : statusText; return `<li role="option" tabindex="0" data-id="${esc(x.id)}" aria-selected="${st.selected === x.id}"><span class="dot">${i >= 0 ? `<span class="mk">${i + 1}</span>` : ""}</span><span class="t">${esc(x.label)}</span><span class="s">${esc(x.place || x.level || "")}</span><span class="st" style="color:var(--${x.status})" title="${esc(desc)}">${sw(x.status)}<span>${esc(desc)}</span></span></li>`; }).join("")}</ul>`;
   }
 }
 function renderTour() {
@@ -324,7 +607,7 @@ function renderTour() {
 }
 function goStep(i, instant) {
   const list = ordered(st.spec).filter(x => PROBLEM.includes(x.status)); st.step = Math.max(0, Math.min(list.length - 1, i));
-  const id = list[st.step].id; st.selected = id; viewer.select(id, false); viewer.focusOn(id); renderTour(); renderBars(); syncMarks();
+  const id = list[st.step].id; st.selected = id; viewer.select(id, false); viewer.focusOn(id); renderTour(); renderBars({ home: false }); syncMarks();
   void instant;
 }
 
@@ -359,8 +642,10 @@ function syncMarks() {
   // pins: stagger the leader of any badge that would sit on another badge
   const badges = [], stems = [], pinLeads = [];
   if (!st.pinSvg) { st.pinSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg"); st.pinSvg.setAttribute("class", "leaders"); st.pinSvg.setAttribute("aria-hidden", "true"); marks.prepend(st.pinSvg); }
+  // Pins only for the selected callout — overview stays box/colour only (clash-style).
   // visible pins first, so faded (occluded) pins make way for them
   callouts.map(c => ({ c, a: viewer.anchorOf(c.id) })).sort((p, q) => (p.a && q.a ? (p.a.occluded - q.a.occluded) || (p.a.x - q.a.x) : 0)).forEach(({ c, a }) => {
+    if (st.selected !== c.id) { c.el.style.display = "none"; return; }
     if (!a) { c.el.style.display = "none"; return; }
     if (a.occluded) {
       // a hidden place: a faded badge right on it, no stem; nudge sideways if it would sit on another pin
@@ -392,7 +677,8 @@ function syncMarks() {
     c.el.style.display = ""; c.el.style.left = a.x + "px"; c.el.style.top = a.y + "px"; c.el.classList.toggle("behind", a.occluded); c.el.classList.toggle("sel", st.selected === c.id);
   });
   st.pinSvg.innerHTML = pinLeads.length ? `<path d="${pinLeads.join("")}" fill="none" stroke="var(--ink)" stroke-width="1.5"/>` : "";
-  const ms = viewer.measureAnchors().sort((a, b) => a.y - b.y), seen = new Set(), leaderPaths = [], dots = [];
+  // Measure tags only for the focused / hovered item — keep the model readable; values stay in the list.
+  const ms = viewer.measureAnchors().filter(m => m.id === st.selected || m.id === st.hovered).sort((a, b) => a.y - b.y), seen = new Set(), leaderPaths = [], dots = [];
   if (!st.leaderSvg) { st.leaderSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg"); st.leaderSvg.setAttribute("class", "leaders"); st.leaderSvg.setAttribute("aria-hidden", "true"); marks.prepend(st.leaderSvg); }
   // obstacles: callout pins (badge plus leader above the anchor)
   const rects = callouts.filter(c => c.el.style.display !== "none").map(c => { const x = parseFloat(c.el.style.left), y = parseFloat(c.el.style.top), lift = parseFloat(c.el.style.getPropertyValue("--lift")) || 20; return { l: x - 14, t: y - lift - 28, r: x + 14, b: y }; });
@@ -474,20 +760,29 @@ function showDetail() {
   detailEl = document.createElement("div"); detailEl.className = "detail"; detailEl.setAttribute("role", "dialog"); detailEl.setAttribute("aria-label", x.label);
   detailEl.innerHTML = `<h3>${esc(x.label)}</h3><p>${esc(x.place && x.place !== x.label ? x.place + ", " : "")}${esc(x.level || "")}</p><p class="why" style="color:var(--${x.status})">${esc(x.reason || label(st.spec, x.status))}</p>
     ${v ? `<dl><dt>Measured</dt><dd>${v.v}</dd>${v.u ? `<dt>Rule</dt><dd>${v.u}</dd>` : ""}<dt>Revit id</dt><dd>${esc(x.revit_id ?? "–")}</dd></dl>` : `<dl><dt>Revit id</dt><dd>${esc(x.revit_id ?? "–")}</dd></dl>`}
-    <div class="row"><button class="btn primary" type="button" data-revit="${esc(x.id)}">Show in Revit</button><button class="btn" type="button" data-close>Close</button></div>`;
+    <div class="row"><button class="btn" type="button" data-close>Close</button></div>`;
   stage.append(detailEl);
+  bindFloat(detailEl);
 }
 function selectItem(id, fly) {
   st.selected = st.selected === id && !fly ? null : id;
-  viewer.select(st.selected, false); if (st.selected && fly) { viewer.focusOn(st.selected); renderBars(); }
+  viewer.select(st.selected, false);
+  // Stay in Canvas only — never select / zoom the host Revit model from list or callout clicks.
+  if (st.selected && fly) { viewer.focusOn(st.selected); renderBars({ home: false }); }
   if (st.layout === "tour" && !st.exploring && st.selected) { const list = ordered(st.spec).filter(x => PROBLEM.includes(x.status)); const k = list.findIndex(x => x.id === id); if (k >= 0) { st.step = k; renderTour(); } }
   else renderBelow();
   showDetail();
   document.querySelector(`.fcard[data-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
 }
-viewer.on("select", id => { if (id) selectItem(id, false); else { st.selected = null; showDetail(); renderBelow(); } });
+viewer.on("select", id => { if (!st.spec) return; if (id) selectItem(id, false); else { st.selected = null; showDetail(); renderBelow(); } });
 const tip = document.createElement("div"); tip.className = "tip"; tip.hidden = true; stage.append(tip);
-viewer.onHover(h => { if (!h) { tip.hidden = true; return; } const x = st.spec.subjects.find(y => y.id === h.id); const r = stage.getBoundingClientRect(); tip.hidden = false; tip.textContent = `${x.label} · ${x.reason || ""}`; tip.style.left = (h.x - r.left) + "px"; tip.style.top = (h.y - r.top) + "px"; });
+viewer.onHover(h => {
+  const next = h && h.id || null;
+  if (st.hovered !== next) st.hovered = next;
+  if (!h || !st.spec) { tip.hidden = true; return; }
+  const x = st.spec.subjects.find(y => y.id === h.id); if (!x) { tip.hidden = true; return; }
+  const r = stage.getBoundingClientRect(); tip.hidden = false; tip.textContent = `${x.label} · ${x.reason || ""}`; tip.style.left = (h.x - r.left) + "px"; tip.style.top = (h.y - r.top) + "px";
+});
 
 /* Popovers */
 function closePop() { document.querySelector(".pop")?.remove(); document.querySelectorAll("[data-pop]").forEach(b => b.setAttribute("aria-expanded", "false")); st.pop = null; }
@@ -500,23 +795,124 @@ function openPop(kind, btn) {
     : `<h3>How this was checked</h3><dl><dt>Rule</dt><dd>${esc(pv.rule)}</dd><dt>Checked</dt><dd>${esc(sc.included || "Whole model")}${sc.levels ? `, ${esc(sc.levels.join(", "))}` : ""}</dd>${sc.excluded ? `<dt>Excluded</dt><dd>${esc(sc.excluded)}</dd>` : ""}<dt>Not checked</dt><dd>${(s.limits || []).length ? `<ul>${s.limits.map(l => `<li>${esc(l)}</li>`).join("")}</ul>` : "Nothing was left out."}</dd><dt>Model</dt><dd>${esc(sc.model)}${pv.model_synced ? `, synced ${esc(pv.model_synced)}` : ""}</dd><dt>Ran</dt><dd>${esc(pv.ran_at)}</dd><dt>Source</dt><dd>${esc(pv.source)}</dd>${pv.sample ? `<dt>Data</dt><dd>Sample data for this prototype</dd>` : ""}</dl>`;
   document.body.append(el);
   const r = btn.getBoundingClientRect(); el.style.top = (r.bottom + 8) + "px";
+  bindFloat(el);
 }
 
+function bindFloat(el) {
+  if (!el || el.dataset.floatBound) return;
+  el.dataset.floatBound = "1";
+  const handle = el.querySelector("[data-drag]") || el.querySelector("h3") || el;
+  handle.addEventListener("pointerdown", event => {
+    if (event.button !== 0) return;
+    if (event.target.closest("input, button, a, select, textarea, label, summary")) return;
+    const parent = el.offsetParent || document.documentElement;
+    const parentBox = parent.getBoundingClientRect();
+    const box = el.getBoundingClientRect();
+    const origin = { x: event.clientX, y: event.clientY, left: box.left - parentBox.left, top: box.top - parentBox.top };
+    const stretched = getComputedStyle(el).bottom !== "auto";
+    el.style.right = "auto";
+    el.style.bottom = "auto";
+    if (stretched) el.style.height = Math.max(box.height, 160) + "px";
+    el.style.left = origin.left + "px";
+    el.style.top = origin.top + "px";
+    let moved = false;
+    function move(ev) {
+      const dx = ev.clientX - origin.x, dy = ev.clientY - origin.y;
+      if (Math.hypot(dx, dy) > 3) moved = true;
+      el.style.left = Math.max(0, Math.min(Math.max(0, parentBox.width - 36), origin.left + dx)) + "px";
+      el.style.top = Math.max(0, Math.min(Math.max(0, parentBox.height - 28), origin.top + dy)) + "px";
+    }
+    function up() {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      if (!moved) return;
+      const swallow = ev => { ev.stopPropagation(); ev.preventDefault(); window.removeEventListener("click", swallow, true); };
+      window.addEventListener("click", swallow, true);
+    }
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    event.preventDefault();
+  });
+}
 document.addEventListener("click", e => {
-  const t = e.target.closest("[data-show],[data-levels],[data-view],#home,[data-pop],[data-filter],[data-step],#explore,.fcard,.items li,[data-revit],[data-close],#theme");
+  if (e.target.closest("#space-toggle")) {
+    viewer.setSpacesVisible(!viewer.spacesVisible());
+    const b = $("#space-toggle");
+    if (b) { const on = viewer.spacesVisible(); b.setAttribute("aria-pressed", String(on)); b.textContent = "Spaces " + (on ? "on" : "off"); }
+    renderBrowser();
+    return;
+  }
+  if (e.target.closest("#filter-menu")) { const open = document.getElementById("filter-pop"); if (open) closeFilterPop(); else openFilterPop(e.target.closest("#filter-menu")); return; }
+  if (e.target.closest("#filter-pop")) {
+    if (e.target.closest("[data-facet-clear]")) { viewer.clearFacet(); syncFilterButton(); const btn = $("#filter-menu"); if (btn) openFilterPop(btn); return; }
+    const chip = e.target.closest("[data-facet]");
+    if (chip) { viewer.setFacetVisible(chip.dataset.facet, chip.dataset.facetId, !viewer.facetOn(chip.dataset.facet, chip.dataset.facetId)); syncFilterButton(); const btn = $("#filter-menu"); if (btn) openFilterPop(btn); }
+    return;
+  }
+  if (document.getElementById("filter-pop")) closeFilterPop();
+  if (e.target.closest("#link-menu")) { const open = document.getElementById("link-pop"); if (open) closeLinkPop(); else openLinkPop(e.target.closest("#link-menu")); return; }
+  if (e.target.closest("#link-pop")) {
+    const all = e.target.closest("[data-links]");
+    if (all) { viewer.linkList().forEach(l => viewer.setLinkHidden(l.id, all.dataset.links === "none")); const btn = $("#link-menu"); syncLinkButton(); if (btn) openLinkPop(btn); }
+    const clear = e.target.closest("[data-link-clear]");
+    if (clear) { viewer.setLinkStyle(clear.dataset.linkClear, { color: null }); const btn = $("#link-menu"); if (btn) openLinkPop(btn); }
+    return;
+  }
+  if (document.getElementById("link-pop")) closeLinkPop();
+  const t = e.target.closest("[data-show],[data-levels],[data-view],#home,#stage-title,[data-pop],[data-filter],[data-step],#explore,.fcard,.items li,[data-close],#theme");
   if (!t) { if (st.pop && !e.target.closest(".pop")) closePop(); return; }
   if (t.dataset.show) { viewer.setShow(t.dataset.show); renderBars(); }
   else if (t.dataset.levels) { const v = t.dataset.levels; if (v.startsWith("cut:")) viewer.setLevels("cut", v.slice(4)); else viewer.setLevels(v); renderBars(); }
   else if (t.dataset.view) { viewer.setView(t.dataset.view); renderBars(); }
-  else if (t.id === "home") viewer.home();
+  else if (t.id === "home" || t.id === "stage-title") {
+    // Fig. 1 caption reframes like Home; if an item is selected, fly back to it instead.
+    if (st.selected) { viewer.focusOn(st.selected); renderBars({ home: false }); }
+    else viewer.home();
+  }
   else if (t.dataset.pop) openPop(t.dataset.pop, t);
   else if (t.dataset.filter) { st.filter = t.dataset.filter; renderBelow(); }
   else if (t.dataset.step) goStep(st.step + Number(t.dataset.step));
   else if (t.id === "explore") { st.exploring = true; canvas.dataset.layout = "model-focus"; viewer.home(); renderBelow(); showDetail(); }
   else if (t.matches(".fcard, .items li")) selectItem(t.dataset.id, true);
-  else if (t.dataset.revit) { const x = st.spec.subjects.find(y => y.id === t.dataset.revit); toast(`Prototype: Revit would select ${x.label} (id ${x.revit_id}) and zoom to it.`); }
   else if (t.hasAttribute("data-close")) { st.selected = null; viewer.select(null, false); showDetail(); renderBelow(); }
   else if (t.id === "theme") { const dark = matchMedia("(prefers-color-scheme: dark)").matches; const cur = document.documentElement.dataset.theme || (dark ? "dark" : "light"); document.documentElement.dataset.theme = cur === "dark" ? "light" : "dark"; viewer.retheme(); }
+});
+document.addEventListener("input", e => {
+  const color = e.target.matches && e.target.matches("input[data-link-color]") ? e.target : null;
+  if (color) { viewer.setLinkStyle(color.dataset.linkColor, { color: color.value }); return; }
+  const op = e.target.matches && e.target.matches("input[data-link-opacity]") ? e.target : null;
+  if (!op) return;
+  viewer.setLinkStyle(op.dataset.linkOpacity, { opacity: Number(op.value) });
+  const lab = op.parentElement && op.parentElement.querySelector("[data-op-lab]");
+  if (lab) lab.textContent = Math.round(Number(op.value) * 100) + "%";
+});
+document.addEventListener("click", e => {
+  if (e.target.closest("[data-browser-all]")) { setBrowserAll(true); return; }
+  if (e.target.closest("[data-browser-none]")) { setBrowserAll(false); return; }
+});
+document.addEventListener("change", e => {
+  const box = e.target.matches && e.target.matches("input[data-browser]") ? e.target : null;
+  if (!box) return;
+  viewer.setFacetVisible(box.dataset.browser, box.dataset.browserId, box.checked);
+  if (box.dataset.browser === "roles" && box.dataset.browserId === "volume") {
+    viewer.setSpacesVisible(box.checked);
+    const b = $("#space-toggle");
+    if (b) { const on = viewer.spacesVisible(); b.setAttribute("aria-pressed", String(on)); b.textContent = "Spaces " + (on ? "on" : "off"); }
+  }
+  renderBrowser();
+});
+document.getElementById("browser-toggle")?.addEventListener("click", () => {
+  const pane = $("#browser");
+  pane.classList.toggle("collapsed");
+  pane.style.left = "";
+  pane.style.top = "";
+  pane.style.right = "";
+  pane.style.bottom = "";
+  pane.style.height = "";
+  pane.style.width = "";
+  const open = !pane.classList.contains("collapsed");
+  if (open) renderBrowser();
+  else syncBrowserToggle();
 });
 document.addEventListener("keydown", e => {
   if (e.key === "Escape") { if (st.pop) closePop(); else if (st.selected) { st.selected = null; viewer.select(null, false); showDetail(); renderBelow(); } }
@@ -530,22 +926,32 @@ function showEmpty(message) {
   st.spec = null; closePop(); canvas.hidden = false; $("#rejected")?.remove();
   canvas.dataset.layout = "model-focus";
   $("#stale").innerHTML = "";
-  $("#answer").innerHTML = `<div class="verdict" style="color:var(--ink-3)"><span>No result yet</span></div><h1 class="outcome">${esc(message || "Ask the agent a question about the model; its answer will appear here, drawn in the building.")}</h1><p class="asked">${viewer.hasModel ? "Showing the current Revit view." : "No model loaded yet."}</p>
-    <div class="answer-tools"><button class="chip-btn" type="button" id="load-view">${viewer.hasModel ? "Reload Revit view" : "Load Revit view"}</button></div>`;
+  $("#answer").innerHTML = `<div class="verdict" style="color:var(--ink-3)"><span>No result yet</span></div><h1 class="outcome">${esc(message || "Ask the agent a question about the model; its answer will appear here, drawn in the building.")}</h1><p class="asked">${viewer.hasModel ? "Showing the current Revit view." : "No model loaded yet."}${specs.length ? " Use <b>Results</b> in the top bar to bring a previous answer back." : ""}</p>
+    <div class="answer-tools">${specs.length ? `<button class="chip-btn" type="button" id="restore-last">Show last result</button>` : ""}</div>`;
   $("#below").className = ""; $("#below").innerHTML = "";
   marks.innerHTML = ""; callouts = []; st.scaleEls = null; st.leaderSvg = null; st.pinSvg = null; st.measureEls = new Map(); st.levelEls = new Map();
-  $("#bar-left").innerHTML = ""; $("#bar-right").innerHTML = `<div class="seg"><button type="button" id="home">Home</button></div>`;
+  $("#bar-left").innerHTML = ""; $("#bar-right").innerHTML = spaceButtonHtml() + linkButtonHtml() + `<div class="seg"><button type="button" id="home">Home</button></div>`;
+  syncLoadViewLabel();
+  renderBrowser();
   $("#stage-title").innerHTML = viewer.hasModel ? `<b>Fig. 1</b>Current Revit view` : "";
 }
 
 /* ---------- Legacy messages from older tools ---------- */
 function legacyAnalysisToSpec(items) {
   const map = { pass: "pass", ok: "pass", green: "pass", fail: "fail", error: "fail", red: "fail", warn: "attention", warning: "attention", amber: "attention", yellow: "attention" };
-  const subjects = (items || []).filter(it => it && (it.elementId || it.id)).map(it => ({ id: String(it.elementId || it.id), revit_id: Number(it.elementId || it.id), label: it.label || it.name || `Element ${it.elementId || it.id}`, status: map[String(it.status || "").toLowerCase()] || "info", reason: it.message || it.note || "" }));
+  const field = (it, camel, pascal) => (it[camel] != null && it[camel] !== "") ? it[camel] : it[pascal];
+  const subjects = (items || []).filter(it => it && (field(it, "elementId", "ElementId") || it.id)).map(it => {
+    const id = field(it, "elementId", "ElementId") || it.id;
+    const raw = String(field(it, "status", "Status") || "").toLowerCase();
+    return { id: String(id), revit_id: Number(id), label: field(it, "label", "Label") || field(it, "name", "Name") || `Element ${id}`, status: map[raw] || "info", reason: field(it, "message", "Message") || field(it, "note", "Note") || "" };
+  });
   const used = [...new Set(subjects.map(x => x.status))];
-  return { spec: "revit-result/1", title: "Analysis colours", question: "Colour these elements by result.", outcome: `${subjects.length} element${subjects.length === 1 ? "" : "s"} coloured by the agent's analysis.`, verdict: used.includes("fail") ? "fail" : used.includes("attention") ? "attention" : "info",
-    scope: { model: "Current Revit view" }, view: { kind: "axon", caption: "Elements coloured by the agent's analysis", legend: used.map(st => ({ status: st, label: { fail: "Fails", attention: "Needs attention", pass: "Passes", info: "Marked" }[st] })) },
-    presentation: { layout: "model-and-list", show: "in-context", levels: "stacked", why: "Sent through the older colour-by-element tool, shown as a list with the model." },
+  const legendText = { fail: "Clashes with the other model", attention: "Needs a closer look", pass: "Passes the check", info: "Marked for context" };
+  const legend = (used.length ? used : ["info"]).map(st => ({ status: st, label: legendText[st] || "Marked for context" }));
+  postToHost("log", { message: "analysis-spec subjects=" + subjects.length });
+  return { spec: "revit-result/1", title: "Analysis colours", question: "Colour these elements by result.", outcome: `${subjects.length} element${subjects.length === 1 ? "" : "s"} coloured where the host meets the HVAC link.`, verdict: used.includes("fail") ? "fail" : used.includes("attention") ? "attention" : "info",
+    scope: { model: "Current Revit view" }, view: { kind: "axon", caption: "Clash elements in red, the rest of the model kept for context", legend },
+    presentation: { layout: "model-and-list", show: subjects.some(x => ["fail", "attention", "cat1", "cat2"].includes(x.status)) ? "in-context" : "everything", levels: "stacked", why: "Shell + fails keeps the building readable with clash elements bright; Failures is an x-ray; Full model shows every category." },
     subjects, provenance: { ran_at: new Date().toLocaleString("en-GB"), rule: "Colours supplied by the agent", source: "panel_set_analysis" }, limits_none: true };
 }
 function showLegacyReport(report) {
@@ -561,9 +967,30 @@ function showLegacyReport(report) {
 /* ---------- Bridge to the Revit add-in ---------- */
 let pendingSpec = null, loading = false;
 function setStatus(text) { const t = $("#stage-title"); if (t && !st.spec) t.innerHTML = `<b>Fig. 1</b>${esc(text)}`; }
-function requestGeometry() { if (!bridge || loading) return; loading = true; setStatus("Loading the active Revit view…"); postToHost("request_geometry", {}); }
-function receiveResult(spec) {
-  const i = addResult(spec);
+function showLoadBar(percent, label) {
+  const bar = $("#load-bar"); if (!bar) return;
+  bar.hidden = false; bar.classList.add("on");
+  const pct = Math.max(0, Math.min(100, Number(percent) || 0));
+  $("#load-fill").style.width = pct + "%";
+  bar.setAttribute("aria-valuenow", String(pct));
+  $("#load-label").textContent = label || "Loading…";
+}
+function hideLoadBar() { const bar = $("#load-bar"); if (!bar) return; bar.classList.remove("on"); bar.hidden = true; }
+function syncLoadViewLabel() {
+  const btn = $("#load-view"); if (!btn) return;
+  btn.disabled = !!loading;
+  btn.textContent = loading ? "Loading…" : (viewer.hasModel ? "Reload current view" : "Load current view");
+  btn.title = "Load geometry from the active Revit view into this canvas";
+}
+function requestGeometry() {
+  if (!bridge || loading) return;
+  loading = true; syncLoadViewLabel();
+  showLoadBar(0, "Loading the active Revit view…");
+  setStatus("Loading the active Revit view…");
+  postToHost("request_geometry", {});
+}
+function receiveResult(spec, opts) {
+  const i = addResult(spec, opts);
   if (!viewer.hasModel && bridge) { pendingSpec = i; requestGeometry(); renderAnswerPreview(spec); return; }
   load(i);
 }
@@ -575,9 +1002,11 @@ async function loadGeometry(url) {
     const info = viewer.loadMesh(payload);
     postToHost("log", { message: "canvas geometry loaded", elements: info.elements, levels: info.levels });
     if (pendingSpec != null) { const i = pendingSpec; pendingSpec = null; load(i); }
-    else if (st.spec) load(specs.indexOf(st.spec)); else showEmpty();
+    else if (st.spec) load(specs.indexOf(st.spec));
+    else if (specs.length) load(specs.length - 1); // keep the last answer after Reload / pick refresh
+    else showEmpty();
   } catch (e) { postToHost("error", { message: String(e && e.message || e) }); setStatus("Could not load the model: " + (e && e.message || e)); }
-  finally { loading = false; }
+  finally { loading = false; syncLoadViewLabel(); hideLoadBar(); renderBrowser(); }
 }
 async function loadDelta(payload) {
   try {
@@ -595,8 +1024,36 @@ function handleCapture(p) {
     postToHost("capture_result", { requestId, ok: true, mimeType: head.slice(5, head.indexOf(";")), width: c.width, height: c.height, byteLength: Math.round(b64.length * 0.75), dataBase64: b64 });
   } catch (e) { postToHost("capture_result", { requestId, ok: false, error: "capture_failed", message: String(e && e.message || e) }); }
 }
-viewer.on("pick", id => { if (/^\d+$/.test(String(id))) postToHost("pick", { elementId: Number(id) }); });
-document.addEventListener("click", e => { if (e.target.closest("#load-view")) requestGeometry(); });
+// Do not post pick/show_in_revit to the host — Canvas exploration must not change Revit selection.
+// After plugin rebuild, host "pick" only records LastPick (no SetElementIds); re-enable posting then if panel_pick needs live clicks.
+viewer.on("pick", (id, info) => showInspect(id, info));
+function showInspect(id, info) {
+  document.getElementById("inspect")?.remove();
+  if (!info) return;
+  const card = document.createElement("div");
+  card.id = "inspect";
+  card.className = "inspect";
+  card.setAttribute("role", "dialog");
+  const title = info.family || info.typeName || info.category || "Element";
+  card.innerHTML = `<h3>${esc(title)}</h3><dl>
+    <dt>Model</dt><dd title="${esc(info.modelName)}">${esc(info.modelName || (info.linkId ? "Link" : "Host"))}</dd>
+    <dt>Id</dt><dd>${esc(info.elementId ?? id ?? "–")}</dd>
+    <dt>Family</dt><dd title="${esc(info.family)}">${esc(info.family || "–")}</dd>
+    <dt>Type</dt><dd title="${esc(info.typeName)}">${esc(info.typeName || "–")}</dd>
+    </dl><button class="btn" type="button" id="inspect-close">Close</button>`;
+  stage.append(card);
+  bindFloat(card);
+}
+document.addEventListener("click", e => {
+  if (e.target.closest("#inspect-close")) document.getElementById("inspect")?.remove();
+});
+document.addEventListener("click", e => {
+  if (e.target.closest("#load-view")) requestGeometry();
+  if (e.target.closest("#restore-last")) {
+    if (specs.length) load(specs.length - 1);
+    else if (bridge) postToHost("restore_result", {});
+  }
+});
 
 if (bridge) {
   bridge.addEventListener("message", event => {
@@ -605,25 +1062,68 @@ if (bridge) {
     panelToken = m.token || panelToken;
     const p = m.payload || {};
     switch (m.type) {
-      case "set_result": if (p.spec) receiveResult(p.spec); break;
+      case "set_result": if (p.spec) receiveResult(p.spec, { restore: !!p.restore }); break;
       case "geometry_ready": loadGeometry(p.url); break;
       case "geometry_delta": loadDelta(p); break;
-      case "set_analysis": if ((p.items || []).length) receiveResult(legacyAnalysisToSpec(p.items)); break;
-      case "clear_analysis": case "clear": viewer.clearSpec(); showEmpty(); break;
+      case "set_analysis":
+        // Colour meshes without wiping a real Result Spec the agent already drew.
+        if ((p.items || []).length) {
+          if (st.spec && st.spec.source !== "panel_set_analysis" && st.spec.provenance?.source !== "panel_set_analysis") {
+            const items = p.items;
+            const map = { pass: "pass", ok: "pass", green: "pass", fail: "fail", error: "fail", red: "fail", warn: "attention", warning: "attention", amber: "attention", yellow: "attention" };
+            items.forEach(it => {
+              const id = it.elementId ?? it.ElementId ?? it.id;
+              if (id == null) return;
+              const raw = String(it.status ?? it.Status ?? "").toLowerCase();
+              const status = map[raw] || "info";
+              const existing = st.spec.subjects.find(s => String(s.revit_id) === String(id) || String(s.id) === String(id));
+              if (existing) { existing.status = status; if (it.color || it.Color) existing.color = it.color || it.Color; }
+              else st.spec.subjects.push({ id: String(id), revit_id: Number(id), label: it.label || it.Label || `Element ${id}`, status, reason: it.message || "" });
+            });
+            viewer.setSpec(st.spec, false); renderBelow(); buildMarks();
+          } else {
+            receiveResult(legacyAnalysisToSpec(p.items));
+          }
+        }
+        break;
+      case "clear_analysis": case "clear":
+        // Clear the drawing but keep the Results picker so the user can bring an answer back.
+        viewer.clearSpec(); showEmpty(specs.length ? "Pick a result above to show it on the model again." : undefined);
+        break;
       case "set_report": showLegacyReport(p.report || p); break;
       case "set_view": break;
       case "fit": viewer.home(); break;
       case "zoom": viewer.flyToIds([].concat(p.elementIds || p.ids || p.elementId || [])); break;
+      case "reload_page": location.reload(); break;
       case "capture": handleCapture(p); break;
-      case "load_geometry_progress": setStatus(p.message || "Extracting the model…"); break;
-      case "load_geometry_result": loading = false; if (!(p && p.ok)) setStatus("Could not load the model: " + ((p && (p.message || p.error)) || "unknown")); break;
+      case "load_geometry_progress": {
+        const pct = typeof p.percent === "number" ? p.percent : 0;
+        const label = p.total ? `${p.message || "Converting"} · ${p.done || 0}/${p.total}` : (p.message || "Converting…");
+        showLoadBar(pct, label);
+        setStatus(p.background ? "Converting in the background. You can keep using Revit." : label);
+        loading = true;
+        syncLoadViewLabel();
+        break;
+      }
+      case "load_geometry_result":
+        loading = false; syncLoadViewLabel(); hideLoadBar();
+        if (!(p && p.ok)) { setStatus("Could not load the model: " + ((p && (p.message || p.error)) || "unknown")); break; }
+        {
+          const bits = [`${p.elementCount || 0} elements`, `${((p.totalVertices || 0) / 1000) | 0}k verts`];
+          if (p.truncated) bits.push("truncated");
+          if (p.skippedElements) bits.push(`${p.skippedElements} skipped`);
+          toast(`Loaded ${esc(p.viewName || "view")} · ${bits.join(" · ")}`);
+          if (p.scope) setStatus(p.truncated ? `Partial load — ${p.scope}` : p.scope);
+        }
+        break;
       default: break;
     }
   });
   picker.disabled = true; picker.add(new Option("No result yet", -1));
   showEmpty();
   postToHost("ready", {});
-  requestGeometry();
+  // After a host-driven reload, ask for the last Result Spec (and keep waiting for geometry).
+  postToHost("restore_result", {});
 } else {
   // Browser demo: synthetic building and sample results
   const loadScript = src => new Promise((ok, fail) => { const el = document.createElement("script"); el.src = src; el.onload = ok; el.onerror = fail; document.body.append(el); });

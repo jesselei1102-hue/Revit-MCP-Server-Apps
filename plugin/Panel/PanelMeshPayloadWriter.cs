@@ -46,7 +46,15 @@ namespace revit_mcp_plugin.Panel
             return WritePayload(tmpDir, extraction, fileName, delta: true);
         }
 
-        private static PanelGeometrySummary WritePayload(string tmpDir, PanelMeshResult extraction, string fileName, bool delta)
+        public static PanelGeometrySummary WriteModel(string tmpDir, string fileName, PanelMeshResult extraction, JObject cache)
+        {
+            if (string.IsNullOrWhiteSpace(fileName))
+                throw new ArgumentException("fileName is required", nameof(fileName));
+            Directory.CreateDirectory(tmpDir);
+            return WritePayload(tmpDir, extraction, fileName, delta: false, cache);
+        }
+
+        private static PanelGeometrySummary WritePayload(string tmpDir, PanelMeshResult extraction, string fileName, bool delta, JObject cache = null)
         {
             var positions = extraction.Positions.ToArray();
             var indices = extraction.Indices.ToArray();
@@ -71,9 +79,22 @@ namespace revit_mcp_plugin.Panel
                     ["firstIndex"] = element.FirstIndex,
                     ["indexCount"] = element.IndexCount,
                     ["cutIndexCount"] = element.CutIndexCount,
+                    ["isLink"] = element.IsLink,
                 };
+                if (element.LinkInstanceId.HasValue)
+                    elementJson["linkInstanceId"] = element.LinkInstanceId.Value;
+                if (!string.IsNullOrEmpty(element.MeshKey))
+                    elementJson["meshKey"] = element.MeshKey;
+                if (!string.IsNullOrEmpty(element.FamilyName))
+                    elementJson["family"] = element.FamilyName;
+                if (!string.IsNullOrEmpty(element.TypeName))
+                    elementJson["typeName"] = element.TypeName;
+                if (!string.IsNullOrEmpty(element.ModelName))
+                    elementJson["modelName"] = element.ModelName;
                 if (element.CutColor.HasValue)
                     elementJson["cutColor"] = $"#{element.CutColor.Value:X6}";
+                if (element.DisplayColor.HasValue)
+                    elementJson["displayColor"] = $"#{element.DisplayColor.Value:X6}";
                 if (element.LevelId.HasValue)
                     elementJson["levelId"] = element.LevelId.Value;
                 elements.Add(elementJson);
@@ -112,19 +133,21 @@ namespace revit_mcp_plugin.Panel
             {
                 ["format"] = delta ? "panel-mesh-delta-v1" : "panel-mesh-v1",
                 ["coordinateSystem"] = "revit-feet-zup",
-                ["elementCount"] = extraction.Elements.Count,
-                ["totalVertices"] = extraction.TotalVertices,
-                ["totalIndices"] = extraction.TotalIndices,
-                ["truncated"] = extraction.Truncated,
-                ["skippedElements"] = extraction.SkippedElements,
-                ["clientSectionClip"] = extraction.ClientSectionClip,
-                ["cutPlanes"] = cutPlanes,
-                ["sectionBoxCorners"] = sectionCorners,
-                ["elements"] = elements,
-                ["levels"] = new JArray(extraction.Levels.Select(l => new JObject { ["id"] = l.Id, ["name"] = l.Name ?? string.Empty, ["elevation"] = l.Elevation })),
-                ["positionsB64"] = Convert.ToBase64String(positionsBytes),
-                ["indicesB64"] = Convert.ToBase64String(indicesBytes),
             };
+            if (cache != null)
+                payload["cache"] = cache;
+            payload["elementCount"] = extraction.Elements.Count;
+            payload["totalVertices"] = extraction.TotalVertices;
+            payload["totalIndices"] = extraction.TotalIndices;
+            payload["truncated"] = extraction.Truncated;
+            payload["skippedElements"] = extraction.SkippedElements;
+            payload["clientSectionClip"] = extraction.ClientSectionClip;
+            payload["cutPlanes"] = cutPlanes;
+            payload["sectionBoxCorners"] = sectionCorners;
+            payload["elements"] = elements;
+            payload["levels"] = new JArray(extraction.Levels.Select(l => new JObject { ["id"] = l.Id, ["name"] = l.Name ?? string.Empty, ["elevation"] = l.Elevation }));
+            payload["positionsB64"] = Convert.ToBase64String(positionsBytes);
+            payload["indicesB64"] = Convert.ToBase64String(indicesBytes);
 
             string finalPath = Path.Combine(tmpDir, fileName);
             string tempPath = finalPath + ".tmp";

@@ -574,6 +574,7 @@ namespace RevitMCPCommandSet.Services
                 {
                     Document targetDoc = doc;
                     string linkName = null;
+                    Transform linkTransform = null;
                     if (linkInstanceId.HasValue)
                     {
                         var link = doc.GetElement(PublicMcpUtils.Id(linkInstanceId.Value)) as RevitLinkInstance;
@@ -600,6 +601,13 @@ namespace RevitMCPCommandSet.Services
                                 error = "Linked document is unloaded"
                             });
                             continue;
+                        }
+
+                        try { linkTransform = link.GetTotalTransform(); }
+                        catch (Exception)
+                        {
+                            try { linkTransform = link.GetTransform(); }
+                            catch (Exception) { linkTransform = Transform.Identity; }
                         }
                     }
 
@@ -633,7 +641,7 @@ namespace RevitMCPCommandSet.Services
                     if (includeClass)
                         item["elementClass"] = element.GetType().Name;
                     if (includeBox)
-                        item["boundingBox"] = PublicMcpUtils.GetBoundingBox(element);
+                        item["boundingBox"] = PublicMcpUtils.GetBoundingBox(element, linkTransform);
                     if (!string.Equals(parameterMode, "None", StringComparison.OrdinalIgnoreCase))
                         item["parameters"] = PublicMcpUtils.GetParameters(element, parameterMode, specificNames);
 

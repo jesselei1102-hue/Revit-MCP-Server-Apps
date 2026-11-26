@@ -112,6 +112,11 @@ namespace revit_mcp_plugin.Panel
                 truncated = summary.Truncated,
                 skippedElements = summary.SkippedElements,
             }, LastGeometryToken);
+
+            // Reloading the mesh wipes the page's drawn result. Push the last Result Spec again
+            // so the user can get back to the previous answer after Load view / pick / refresh.
+            if (LastResult != null)
+                PostToJs("set_result", new { spec = LastResult, restore = true });
         }
 
         /// <summary>
@@ -274,7 +279,11 @@ namespace revit_mcp_plugin.Panel
             string next = raw == "report" ? "report" : "model";
             ActiveView = next;
             PanelService.Instance.SetSurface(next);
-            PostToJs("set_view", new { view = next });
+            // model switch also refreshes the page so disk-copied panel-view fixes apply live
+            if (next == "model")
+                PanelService.Instance.ReloadWebView();
+            else
+                PostToJs("set_view", new { view = next });
             return new { ok = true, view = next, mode = "static", surface = "main" };
         }
 
@@ -590,9 +599,24 @@ namespace revit_mcp_plugin.Panel
                     PanelService.Instance.WritePanelLog("panel_js_error: " + error);
                     break;
                 case "pick":
-                    long elementId = payload?.Value<long?>("elementId") ?? message.Value<long?>("elementId") ?? 0;
-                    if (elementId > 0)
-                        QueuePick(elementId);
+                    // Canvas-only: record the pick for panel_pick / status, never change Revit selection.
+                    {
+                        long elementId = payload?.Value<long?>("elementId") ?? message.Value<long?>("elementId") ?? 0;
+                        if (elementId > 0)
+                            CompletePick(elementId);
+                    }
+                    break;
+                case "show_in_revit":
+                    // Kept for older pages; Agent Canvas no longer drives host selection from clicks.
+                    {
+                        long showId = payload?.Value<long?>("elementId") ?? message.Value<long?>("elementId") ?? 0;
+                        if (showId > 0)
+                            CompletePick(showId);
+                    }
+                    break;
+                case "restore_result":
+                    if (LastResult != null)
+                        PostToJs("set_result", new { spec = LastResult, restore = true });
                     break;
                 case "request_geometry":
                     PanelService.Instance.WritePanelLog("panel_js_request_geometry");

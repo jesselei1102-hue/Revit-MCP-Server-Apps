@@ -53,6 +53,7 @@ export function validateSpec(s: AnyRecord): Violation[] {
     if (!STATUSES.includes(l?.status)) add("B6", `Legend colour "${l?.status}" is not from the status set.`);
     if (!l?.label || String(l.label).length < 3) add("B1", "Each legend entry needs a label that says what it means.");
   });
+  // Empty callouts are fine (clash overview = boxes only). Pins draw only for the selected callout.
   if (arr(view.callouts).length > 5) add("B7", "Call out at most 5 key elements.");
   arr(s.subjects).forEach((x) => { if (!x?.label) add("B5", "Each element needs a human label, such as a door mark or room name."); });
   arr(s.figures).forEach((f) => { if (!f?.label) add("C2", "Each key figure needs a label."); });

@@ -37,8 +37,35 @@ namespace revit_mcp_plugin.Panel
         /// </summary>
         public int? CutColor { get; set; }
 
+        /// <summary>
+        /// Optional 0xRRGGBB surface colour (MEP system type / view override). Null → role default.
+        /// </summary>
+        public int? DisplayColor { get; set; }
+
         /// <summary>Faces successfully triangulated for this element (runtime extract budget).</summary>
         public int FacesEmitted { get; set; }
+
+        /// <summary>MEP curve/fitting: keep a higher face budget so elbows are not cut off.</summary>
+        public bool HighDetail { get; set; }
+
+        /// <summary>This mesh is one Revit link instance (the whole linked model).</summary>
+        public bool IsLink { get; set; }
+
+        /// <summary>Host RevitLinkInstance id, so several category meshes toggle as one link.</summary>
+        public long? LinkInstanceId { get; set; }
+
+        /// <summary>Unique mesh key when several parts share ElementId (link category buckets).</summary>
+        public string MeshKey { get; set; }
+
+        public string FamilyName { get; set; }
+        public string TypeName { get; set; }
+        public string ModelName { get; set; }
+
+        /// <summary>0 = coarsest. Lights use 1 so curved shades stay smooth.</summary>
+        public double TessellationLod { get; set; }
+
+        /// <summary>Wall / floor / roof / window: keep the real solid so openings stay cut out.</summary>
+        public bool KeepSolid { get; set; }
 
         /// <summary>Level the element belongs to (its LevelId, or the level just below its bounding box). Null for links and unplaced elements.</summary>
         public long? LevelId { get; set; }

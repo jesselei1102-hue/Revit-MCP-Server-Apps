@@ -4,7 +4,7 @@
  *   - loadMesh(payload): Revit's panel-mesh-v1 export (feet, Z-up, per-element ranges, optional levels)
  *   - loadSample(building): the synthetic "Harbour Lane Offices" used for the browser demo
  * A Result Spec (RPS-1, sections B and G) then decides what is shown:
- *   show:    "failures-only" | "in-context" | "everything"
+ *   show:    "failures-only" (Failures) | "in-context" (Shell + fails) | "everything" (Full model)
  *   levels:  "stacked" | "exploded" | "cut" (at the spec's level, 1.25 m above its floor)
  *   overlays: "measure" draws floor-to-obstruction dimensions with the required height
  * Subjects take status inks; context is a warm clay model (after Pascal Editor's "Paper" theme)
@@ -21,22 +21,49 @@
   const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
   const fmtM = (v, unit) => typeof v !== "number" ? "" : unit === "mm" ? `${Math.round(v).toLocaleString("en-GB")} mm` : `${v.toFixed(2)} ${unit || "m"}`;
 
-  // Revit category -> drawing role (English category names; anything else reads as a wall-like solid).
-  function roleOf(category, isGlazed) {
-    const c = String(category || "").toLowerCase();
-    if (/^(rooms|spaces|areas|mass)/.test(c) || (isGlazed && /room|space|area|zone/.test(c))) return "volume";
-    if (/window|curtain panel|glass/.test(c) || (isGlazed && /wall|panel/.test(c))) return "glass";
-    if (/door/.test(c)) return "door";
-    if (/floor|slab|foundation|topography|toposolid/.test(c)) return "slab";
-    if (/roof/.test(c)) return "roof";
-    if (/ceiling/.test(c)) return "ceiling";
-    if (/stair|railing|ramp/.test(c)) return "stair";
-    if (/duct|pipe|cable tray|conduit|mechanical|plumbing|sprinkler|air terminal|electrical equipment|lighting fixture/.test(c)) return "mep";
-    if (/structural|column|framing|beam|brace|truss/.test(c)) return "struct";
-    if (/wall|mullion/.test(c)) return "wall";
-    return "furn";
+  // Revit category name → Canvas filter / material role.
+  // Keep handrails / top rails / balusters out of "Furniture" (Handrails does not contain "railing").
+  function roleOf(category, isGlazed, hint) {
+    const c = String(category || "").toLowerCase().trim();
+    const h = String(hint || "").toLowerCase();
+    if (!c && !h) return "other";
+    if (/rooms?|spaces?|areas?|mass|mep space|hvac.?zone|房间|空间|面积|体量|分区/.test(c)) return "volume";
+    if (/洞口|shaft opening|\bopenings?\b/.test(c)) return "opening";
+    if (/curtain|幕墙/.test(c) || /\bmullions?\b/.test(c)) return "curtain";
+    if (/^(windows?|窗|窗户)$/.test(c)) return "glass";
+    if (/\bdoors?\b|^门$|门扇|门框/.test(c) && !/curtain/.test(c)) return "door";
+    if (/floors?|slabs?|foundation|topography|toposolid|pads?|楼板|地板|基础|地形|垫层/.test(c)) return "slab";
+    if (/roofs?|fascia|gutters?|soffits?|屋顶|屋面|封檐|天沟/.test(c)) return "roof";
+    if (/ceilings?|天花板|吊顶/.test(c)) return "ceiling";
+    // Stair parts often omit the word "stair": Runs / Landings / 梯段.
+    if (/^(runs?|landings?|trisers?|treads?|risers?|stringers?)$/.test(c)) return "stair";
+    if (/梯段|踢面|踏板|梯边梁|楼梯平台|楼梯支撑/.test(c)) return "stair";
+    if (/\bstairs?\b|ramps?|multistory|楼梯|坡道/.test(c) && !/rail|扶手|栏杆|baluster|handrail|top rail|termination/.test(c)) return "stair";
+    if (/railings?|handrails?|top rails?|balusters?|terminations?|栏杆|扶手|栏杆扶手|竖杆/.test(c)) return "railing";
+    if (/^supports?$|^支撑$|railing support|handrail support|栏杆支架|扶手支架/.test(c)) return "railing";
+    if (/elevator|escalator|\blifts?\b|电梯|自动扶梯|升降机/.test(c) || /elevator|escalator|\blift\b|电梯|自动扶梯/.test(h)) return "vertical";
+    if (/plumbing fixtures?|plumbing equipment|sanitary|卫浴|洁具|卫生器具|管道设备/.test(c)) return "plumbing";
+    if (/furniture|casework|家具|橱柜/.test(c)) return "furn";
+    if (/specialty equipment|speciality equipment|medical equipment|food service|signage|专用设备|特殊设备|医疗设备|餐饮设备|标识/.test(c)) return "equip";
+    if (/lighting fixtures?|lighting devices?|灯具/.test(c)) return isGlazed ? "glass" : "light";
+    if (/electrical fixtures?|communication devices?|data devices?|fire alarm|nurse call|security devices?|telephone devices?|audio.?visual|电气装置|通信设备|数据设备|火警|保安|电话设备/.test(c)) return "mep";
+    if (/duct|pipes?|pipe fitting|pipe accessory|cable tray|conduit|mechanical equipment|sprinkler|air terminal|electrical equipment|flex duct|flex pipe|duct accessory|duct fitting|电气设备|机械设备|管道|管件|风管|桥架|线管|喷淋|喷头|风口/.test(c)) return "mep";
+    if (/structural|columns?|framing|beams?|braces?|truss|connections?|stiffeners?|结构柱|结构框架|结构梁|结构连接|\b梁\b|\b柱\b/.test(c)) return "struct";
+    if (/\bwalls?\b|墙/.test(c) && !/curtain/.test(c)) return "wall";
+    if (/hardscape|roads?|\bsite\b|parking|景观|道路|场地|停车/.test(c)) return "site";
+    if (/generic model|常规模型|一般模型/.test(c)) {
+      if (/stair|楼梯|ramp|坡道/.test(h)) return "stair";
+      if (/elevator|escalator|电梯|扶梯/.test(h)) return "vertical";
+      if (/toilet|wc|sink|vanity|洁具|马桶|洗脸/.test(h)) return "plumbing";
+      return "generic";
+    }
+    if (/^parts?$|assembl(?:y|ies)|部件|组合/.test(c)) return "generic";
+    // Last-chance name hints when the category is unfamiliar.
+    if (/elevator|escalator|电梯|自动扶梯/.test(h)) return "vertical";
+    if (/stair run|stair landing|梯段|楼梯/.test(h)) return "stair";
+    return "other";
   }
-  const LOW_ROLES = new Set(["wall", "glass", "door", "struct", "furn", "stair"]);
+  const LOW_ROLES = new Set(["wall", "glass", "curtain", "door", "struct", "furn", "generic", "stair", "railing", "plumbing", "equip", "light", "vertical", "site", "other"]);
 
   function createViewer(container) {
     const W = () => container.clientWidth, H = () => container.clientHeight;
@@ -75,27 +102,43 @@
       M.slab = L(col("--model-slab", "#d3cab4"));
       M.floor = L(col("--model-floor", "#ddd4bf"));
       M.wall = L(col("--model-wall", "#efe9da"));
+      M.curtain = L(col("--model-wall", "#e7e2d6"));
       M.furn = L(col("--model-wall", "#efe9da"));
+      M.generic = L(col("--model-door", "#d8d4c9"));
+      M.other = L(col("--model-door", "#d8d4c9"));
+      M.plumbing = L(col("--model-wall", "#ebe4d6"));
+      M.equip = L(col("--model-wall", "#e5dece"));
+      M.light = L(col("--model-door", "#ddd6c8"));
+      M.railing = L(col("--model-struct", "#b3ab9b"));
+      M.vertical = L(col("--model-struct", "#a8a090"));
+      M.site = L(col("--model-slab", "#cfc6b0"));
       M.stair = L(col("--model-slab", "#d3cab4"));
       M.roof = L(col("--model-roof", "#c4bba6"));
       M.ceiling = L(col("--model-wall", "#efe9da"));
       M.door = L(col("--model-door", "#d8d4c9"));
-      M.glass = L(col("--model-glass", "#cdd8df"), { transparent: true, opacity: 0.38, depthWrite: false });
+      M.glass = L(new THREE.Color("#9fd4f8").convertSRGBToLinear(), { transparent: true, opacity: 0.38, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
       M.mep = L(col("--model-mep", "#93a3ae"));
       M.struct = L(col("--model-struct", "#b3ab9b"));
-      M.volume = L(col("--model-glass", "#cdd8df"), { transparent: true, opacity: 0.0, depthWrite: false });
+      M.volume = L(new THREE.Color("#5eb8e0").convertSRGBToLinear(), {
+        transparent: true, opacity: 0.34, depthWrite: false,
+        polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
+        emissive: new THREE.Color("#2a6f8c").convertSRGBToLinear(), emissiveIntensity: 0.12,
+      });
       M.edge = new THREE.LineBasicMaterial({ color: col("--model-edge", "#5f5a50"), transparent: true, opacity: 0.7, clippingPlanes: [clipPlane] });
-      M.xray = new THREE.LineBasicMaterial({ color: col("--model-edge", "#5f5a50"), transparent: true, opacity: 0.16, depthWrite: false });
-      M.xrayFaint = new THREE.LineBasicMaterial({ color: col("--model-edge", "#5f5a50"), transparent: true, opacity: 0.07, depthWrite: false });
-      M.xrayFill = new THREE.MeshBasicMaterial({ color: col("--model-edge", "#5f5a50"), transparent: true, opacity: 0.05, depthWrite: false, side: THREE.DoubleSide });
-      M.ghost = L(col("--model-wall", "#efe9da"), { transparent: true, opacity: 0.16, depthWrite: false });
+      M.xray = new THREE.LineBasicMaterial({ color: col("--model-edge", "#5f5a50"), transparent: true, opacity: 0.32, depthWrite: false });
+      M.xrayFaint = new THREE.LineBasicMaterial({ color: col("--model-edge", "#5f5a50"), transparent: true, opacity: 0.12, depthWrite: false });
+      M.xrayFill = new THREE.MeshBasicMaterial({ color: col("--model-edge", "#5f5a50"), transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide });
+      M.ghost = L(col("--model-wall", "#efe9da"), { transparent: true, opacity: 0.22, depthWrite: false });
+      // Shell + fails: non-shell clutter (MEP / furniture / lights…) pressed down so failures read.
+      M.contextDim = L(col("--model-wall", "#b8b0a2"), { transparent: true, opacity: 0.14, depthWrite: false });
+      M.contextDimEdge = new THREE.LineBasicMaterial({ color: col("--model-edge", "#5f5a50"), transparent: true, opacity: 0.1, depthWrite: false });
       M.scale = new THREE.LineBasicMaterial({ color: col("--ink", "#1b1b1a"), depthTest: false, transparent: true });
       M.ring = new THREE.MeshBasicMaterial({ color: col("--ring", "#2563c9"), transparent: true, opacity: 0.95, depthTest: false });
       M.dim = new THREE.LineBasicMaterial({ color: col("--ink", "#1b1b1a"), depthTest: false, transparent: true });
       M.req = new THREE.LineDashedMaterial({ color: col("--ink", "#1b1b1a"), dashSize: 0.25, gapSize: 0.18, depthTest: false, transparent: true });
       STATUSES.forEach(st => {
-        M["st-" + st] = L(col(`--${st}`, "#c23b22"), { emissive: col(`--${st}`, "#c23b22"), emissiveIntensity: 0.18 });
-        M["fill-" + st] = L(col(`--${st}`, "#c23b22"), { transparent: true, opacity: 0.55, emissive: col(`--${st}`, "#c23b22"), emissiveIntensity: 0.12 });
+        M["st-" + st] = L(col(`--${st}`, "#c23b22"), { emissive: col(`--${st}`, "#c23b22"), emissiveIntensity: 0.42 });
+        M["fill-" + st] = L(col(`--${st}`, "#c23b22"), { transparent: true, opacity: 0.7, emissive: col(`--${st}`, "#c23b22"), emissiveIntensity: 0.28 });
         M["vol-" + st] = new THREE.MeshBasicMaterial({ color: col(`--${st}`, "#c23b22"), transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide });
         M["vedge-" + st] = new THREE.LineBasicMaterial({ color: col(`--${st}`, "#c23b22") });
         M["halo-" + st] = new THREE.MeshBasicMaterial({ color: col(`--${st}`, "#c23b22"), transparent: true, opacity: 0.28, depthWrite: false });
@@ -113,7 +156,28 @@
     let facades = [];
     let source = null;               // "mesh" | "sample"
     let bounds = new THREE.Box3(new THREE.Vector3(0, 0, -24), new THREE.Vector3(40, 12, 0));
+    let hiddenRoles = new Set();
+    let hiddenModels = new Set();
+    function passesFacet(mesh) {
+      if (!mesh) return true;
+      if (hiddenRoles.has(mesh.userData.role || "furn")) return false;
+      const id = mesh.userData.linkId ? String(mesh.userData.linkId) : "host";
+      if (hiddenModels.has(id)) return false;
+      return true;
+    }
+    function setFacetVisible(kind, id, visible) {
+      const set = kind === "models" ? hiddenModels : hiddenRoles;
+      const key = String(id);
+      if (visible) set.delete(key); else set.add(key);
+      paint();
+    }
+    function clearFacet() { hiddenRoles.clear(); hiddenModels.clear(); paint(); }
     let explodeGap = 14;
+    let explodeScale = 1; // user-adjustable multiplier on explodeGap (Spread slider)
+    const hiddenLinks = new Set();
+    let showSpaces = true;
+    const linkStyles = new Map();
+    const linkMatCache = new Map();
     makeMaterials();
     { const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(10, 0, 0)]), M.scale); l.renderOrder = 7; scaleBar.add(l);
       [0, 5, 10].forEach(x => { const t = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x, 0, -0.35), new THREE.Vector3(x, 0, 0.35)]), M.scale); t.renderOrder = 7; scaleBar.add(t); }); }
@@ -158,21 +222,33 @@
       const added = [];
       (payload.elements || []).forEach(el => {
         if (!el.vertexCount || !el.indexCount) return;
+        const hint = [el.family, el.typeName, el.name].filter(Boolean).join(" ");
+        if (!el.isLink && roleOf(el.category, el.isGlazed, hint) === "opening") return;
         const v0 = el.firstVertex, nv = el.vertexCount, i0 = el.firstIndex, ni = el.indexCount;
         const p = new Float32Array(nv * 3);
         let minY = Infinity;
         for (let k = 0; k < nv; k++) { const X = pos[(v0 + k) * 3], Y = pos[(v0 + k) * 3 + 1], Z = pos[(v0 + k) * 3 + 2]; p[k * 3] = X * FT; p[k * 3 + 1] = Z * FT; p[k * 3 + 2] = -Y * FT; if (Z * FT < minY) minY = Z * FT; }
         const ix = new Uint32Array(ni); for (let k = 0; k < ni; k++) ix[k] = idx[i0 + k] - v0;
         const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.BufferAttribute(p, 3)); geo.setIndex(new THREE.BufferAttribute(ix, 1)); geo.computeVertexNormals(); geo.computeBoundingBox();
-        const role = roleOf(el.category, el.isGlazed);
+        const cat = String(el.category || "");
+        const linkId = el.linkInstanceId != null ? String(el.linkInstanceId) : null;
+        const containerLink = !linkId && (!!el.isLink || /revit link|rvt link|链接/i.test(cat));
+        const role = containerLink ? "link" : roleOf(el.category, el.isGlazed, hint);
         const L = (el.levelId != null && byId.get(String(el.levelId))) || levelForY(minY);
-        const mesh = new THREE.Mesh(geo, M[role] || M.wall); mesh.castShadow = role !== "glass" && role !== "volume"; mesh.receiveShadow = true;
-        mesh.userData.role = role; mesh.userData.levelRef = L;
+        const displayColor = el.displayColor || (role === "mep" ? el.cutColor : null) || null;
+        // Rooms/Spaces carry isGlazed for legacy translucency — do not paint them as window glass.
+        const glazed = role === "glass" || (role === "curtain" && !!el.isGlazed);
+        const mesh = new THREE.Mesh(geo, role === "volume" ? M.volume : matFor(role, L, displayColor, glazed));
+        mesh.castShadow = !glazed && role !== "volume";
+        mesh.receiveShadow = true;
+        mesh.userData.role = role; mesh.userData.levelRef = L; mesh.userData.displayColor = displayColor;
+        mesh.userData.glazed = glazed;
+        mesh.userData.linkId = linkId || (containerLink ? String(el.elementId) : null);
         L.group.add(mesh);
         if (edgesOk && (role === "wall" || role === "slab" || role === "roof" || role === "struct" || role === "stair" || role === "door")) addEdges(mesh, L.group);
-        const key = String(el.elementId);
+        const key = el.meshKey || String(el.elementId);
         reg(key, mesh, { kind: role === "door" ? "door" : role, level: L.id, label: el.name || el.category || key });
-        elementInfo.set(key, { name: el.name, category: el.category, role, level: L.id });
+        elementInfo.set(key, { name: el.name, category: el.category, role, level: L.id, displayColor, linkId: mesh.userData.linkId, elementId: el.elementId, family: el.family || "", typeName: el.typeName || "", modelName: el.modelName || "" });
         if (role !== "volume" && role !== "ceiling") L.box.union(geo.boundingBox);
         added.push(key);
       });
@@ -264,14 +340,74 @@
       persp.updateProjectionMatrix();
     }
     const fitScale = () => { const h = H(), fullH = h + Math.abs(insetTop - insetBottom); return fullH / Math.max(120, h - insetTop - insetBottom); };
-    const keyOf = id => (elements.has(id) ? id : (elOfSubj.get(id) || id));
+    // Linked meshes use MeshKey "linkInstanceId:elementId"; specs usually send bare Revit ids.
+    function resolveElementKey(raw) {
+      if (raw == null || raw === "") return null;
+      const id = String(raw);
+      if (elements.has(id)) return id;
+      for (const key of elements.keys()) {
+        if (key.endsWith(":" + id) || key.endsWith("|" + id)) return key;
+      }
+      for (const [key, info] of elementInfo) {
+        if (info && String(info.elementId) === id) return key;
+      }
+      return null;
+    }
+    const keyOf = id => {
+      const s = String(id);
+      if (elements.has(s)) return s;
+      const mapped = elOfSubj.get(s);
+      if (mapped && elements.has(mapped)) return mapped;
+      return resolveElementKey(s) || s;
+    };
     const meshesOf = id => elements.get(keyOf(id)) || [];
-    const levelById = id => levels.find(l => l.id === String(id));
-    const levelOf = id => { const s = subj.get(id); if (s && s.geometry) return String(s.geometry.level); const ms = meshesOf(id); return ms.length ? ms[0].userData.level : null; };
+    // Specs may send a Revit level id or the level name (e.g. "SFL 8.75_2/F").
+    const levelById = id => {
+      if (id == null || id === "") return null;
+      const key = String(id);
+      return levels.find(l => l.id === key)
+        || levels.find(l => l.name === key)
+        || levels.find(l => String(l.name).toLowerCase() === key.toLowerCase())
+        || null;
+    };
+    const levelOf = id => {
+      const s = subj.get(id);
+      if (s) {
+        const raw = (s.geometry && s.geometry.level != null) ? s.geometry.level : (s.level || s.place || null);
+        if (raw != null && raw !== "") {
+          const L = levelById(raw);
+          return L ? L.id : String(raw);
+        }
+      }
+      const ms = meshesOf(id);
+      return ms.length ? ms[0].userData.level : null;
+    };
     const levelIndex = id => { const L = levelById(id); return L ? L.index : -1; };
     const offsetOf = L => (L.targetY !== undefined ? L.targetY : L.group.position.y);
 
-    function matFor(role, L) {
+    function matFromDisplayColor(hex, role) {
+      if (!hex || typeof hex !== "string") return null;
+      const key = "dc:" + hex.toLowerCase();
+      if (M[key]) return M[key];
+      try {
+        const c = new THREE.Color(hex).convertSRGBToLinear();
+        M[key] = new THREE.MeshLambertMaterial({ color: c, clippingPlanes: [clipPlane], side: THREE.DoubleSide });
+        return M[key];
+      } catch (_) { return null; }
+    }
+    function matFor(role, L, displayColor, glazed) {
+      if (role === "glass" || glazed) {
+        if (source !== "mesh" || !LOW_ROLES.has("glass") || !L) return M.glass;
+        if (!L.mats.glass) { const m = M.glass.clone(); m.clippingPlanes = [clipPlane, L.lowPlane]; L.mats.glass = m; }
+        return L.mats.glass;
+      }
+      const tinted = matFromDisplayColor(displayColor, role);
+      if (tinted) {
+        if (source !== "mesh" || !LOW_ROLES.has(role) || !L) return tinted;
+        const k = "dc:" + String(displayColor).toLowerCase() + ":L" + L.id;
+        if (!L.mats[k]) { const m = tinted.clone(); m.clippingPlanes = [clipPlane, L.lowPlane]; L.mats[k] = m; }
+        return L.mats[k];
+      }
       if (source !== "mesh" || !LOW_ROLES.has(role) || !L) return M[role] || M.wall;
       if (!L.mats[role]) { const m = (M[role] || M.wall).clone(); m.clippingPlanes = [clipPlane, L.lowPlane]; L.mats[role] = m; }
       return L.mats[role];
@@ -312,42 +448,117 @@
       });
     }
 
+    function styleLinkMaterial(mesh, mat) {
+      const id = mesh && mesh.userData && mesh.userData.linkId;
+      if (!id || !mat) return mat;
+      const st = linkStyles.get(String(id));
+      if (!st) return mat;
+      const color = st.color || "";
+      const fade = typeof st.opacity === "number" ? st.opacity : 1;
+      if (!color && fade >= 0.999) return mat;
+      const baseOp = mat.transparent ? (typeof mat.opacity === "number" ? mat.opacity : 1) : 1;
+      const op = Math.max(0.04, Math.min(1, baseOp * fade));
+      const key = mat.uuid + "|" + color + "|" + op.toFixed(3);
+      let styled = linkMatCache.get(key);
+      if (!styled) {
+        styled = mat.clone();
+        if (color) {
+          try {
+            styled.color = new THREE.Color(color);
+            if (styled.emissive) { styled.emissive = styled.color.clone(); styled.emissiveIntensity = 0.08; }
+          } catch (_) { /* keep the base colour */ }
+        }
+        styled.transparent = op < 0.98;
+        styled.opacity = op;
+        styled.depthWrite = op > 0.85 && !mat.transparent;
+        linkMatCache.set(key, styled);
+      }
+      return styled;
+    }
+    // Failures / Shell+fails / Full model — three distinct presentation jobs.
+    const SHELL_ROLES = new Set(["wall", "curtain", "glass", "door", "slab", "roof", "ceiling", "stair", "railing", "struct", "opening", "site"]);
+    const CLUTTER_ROLES = new Set(["mep", "plumbing", "light", "furn", "equip", "generic", "vertical", "other", "link"]);
     function paint() {
       const cutIdx = pres.levels === "cut" && pres.cutLevel ? levelIndex(pres.cutLevel) : -1;
       const cutL = cutIdx >= 0 ? levels[cutIdx] : null;
-      const xray = pres.show === "failures-only", everything = pres.show === "everything";
+      const xray = pres.show === "failures-only";
+      const context = pres.show === "in-context" && subj.size > 0;
+      const everything = pres.show === "everything" || (!xray && !context);
       clipPlane.constant = cutL ? cutL.elev + offsetOf(cutL) + CUT_H : 1e6;
-      const low = pres.show === "in-context" && !cutL;
       const subjLevels = new Set([...subj.keys()].map(levelOf));
       levels.forEach(L => {
         const i = L.index, below = cutL && i < cutIdx, quiet = !subjLevels.has(L.id) && (xray || pres.levels === "exploded") && subj.size > 0;
         L.quiet = quiet;
         L.group.visible = !(cutL && i > cutIdx);
-        L.lowPlane.constant = low ? L.elev + offsetOf(L) + LOW_WALL : 1e6;
+        L.lowPlane.constant = 1e6;
         L.group.traverse(o => {
           if (o.parent && o.parent.userData.overlay) return;
-          if (o.userData.low) { const k = low ? LOW_WALL / o.userData.low.h : 1; o.scale.y = k; o.position.y = o.userData.low.y0 + o.userData.low.h * k / 2; }
-          if (o.userData.head) { o.visible = !low && !xray; return; }
-          if (o.isLineSegments) { if (o.userData.of) { o.scale.copy(o.userData.of.scale); o.position.copy(o.userData.of.position); o.visible = o.userData.of.userData.role !== "ceiling" || everything; } o.material = xray ? (quiet ? M.xrayFaint : M.xray) : below ? M.xray : M.edge; return; }
+          if (o.userData.low) { o.scale.y = 1; o.position.y = o.userData.low.y0 + o.userData.low.h / 2; }
+          if (o.userData.head) { o.visible = !xray; return; }
+          if (o.isLineSegments) {
+            if (o.userData.of && !passesFacet(o.userData.of)) { o.visible = false; return; }
+            if (o.userData.of) { o.scale.copy(o.userData.of.scale); o.position.copy(o.userData.of.position); }
+            const of = o.userData.of, ofKey = of && of.userData.id, ofRole = of && of.userData.role;
+            const ofSubj = ofKey && (subj.has(ofKey) || subjOfEl.has(ofKey));
+            if (xray) {
+              if (ofSubj || (ofKey && relatedKeys.has(ofKey))) { o.visible = true; o.material = M.edge; return; }
+              if (CLUTTER_ROLES.has(ofRole) || ofRole === "volume" || ofRole === "glass" || ofRole === "ceiling") { o.visible = false; return; }
+              o.visible = true; o.material = quiet ? M.xrayFaint : M.xray; return;
+            }
+            if (context) {
+              if (ofSubj) { o.visible = true; o.material = M.edge; return; }
+              if (CLUTTER_ROLES.has(ofRole)) { o.visible = true; o.material = M.contextDimEdge; return; }
+              o.visible = ofRole !== "ceiling" || !cutL;
+              o.material = below || quiet ? M.xray : M.edge; return;
+            }
+            o.visible = ofRole !== "ceiling" || everything;
+            o.material = below ? M.xray : M.edge; return;
+          }
           if (!o.isMesh) return;
+          if (!passesFacet(o)) { o.visible = false; return; }
           const key = o.userData.id, sid = key && (subj.has(key) ? key : subjOfEl.get(key)), s = sid && subj.get(sid), role = o.userData.role;
+          const lid = o.userData.linkId;
+          if (lid && hiddenLinks.has(String(lid))) { o.visible = false; return; }
+          if (role === "link" && hiddenLinks.has(String(key))) { o.visible = false; return; }
+          if (role === "volume" && (!showSpaces || hiddenRoles.has("volume"))) { o.visible = false; return; }
           if (!o.userData.low) o.scale.y = 1;
-          if (s && !s.geometry) {
+          // Always colour subject meshes by status.
+          if (s) {
             o.visible = true;
-            o.material = role === "volume" ? M["vol-" + s.status] : (o.userData.kind === "room" || o.userData.kind === "step") ? M["fill-" + s.status] : M["st-" + s.status];
+            o.material = styleLinkMaterial(o, role === "volume" ? M["vol-" + s.status] : (o.userData.kind === "room" || o.userData.kind === "step") ? M["fill-" + s.status] : M["st-" + s.status]);
             if (o.userData.kind === "room" && source === "sample") o.scale.y = 3;
             return;
           }
+          // Failures: shell as thin x-ray; hide non-result clutter so red pops.
           if (xray) {
-            const rel = key && relatedKeys.has(key) && (role === "mep" || role === "struct" || role === "obstruction");
-            o.visible = rel || (source === "mesh" && role !== "volume" && role !== "ceiling" && role !== "glass");
-            o.material = rel ? (M[role] || M.mep) : M.xrayFill;
+            if (key && relatedKeys.has(key)) {
+              o.visible = true;
+              o.material = styleLinkMaterial(o, matFor(role, null, o.userData.displayColor, o.userData.glazed));
+              return;
+            }
+            if (CLUTTER_ROLES.has(role) || role === "volume" || role === "glass" || role === "ceiling") { o.visible = false; return; }
+            o.visible = SHELL_ROLES.has(role) || source === "mesh";
+            o.material = styleLinkMaterial(o, M.xrayFill);
             return;
           }
-          if (role === "volume") { o.visible = false; return; }
-          if (role === "ceiling") { o.visible = everything && !cutL; o.material = M.ceiling; return; }
+          // Shell + fails: architecture readable; MEP / furniture / lights dimmed.
+          if (context) {
+            if (role === "volume") { o.visible = true; o.material = styleLinkMaterial(o, M.volume); return; }
+            if (CLUTTER_ROLES.has(role)) {
+              o.visible = true;
+              o.material = styleLinkMaterial(o, M.contextDim);
+              return;
+            }
+            if (role === "ceiling") { o.visible = !cutL; o.material = styleLinkMaterial(o, M.ceiling); return; }
+            o.visible = true;
+            o.material = styleLinkMaterial(o, below || quiet ? M.ghost : matFor(role, o.userData.levelRef || L, o.userData.displayColor, o.userData.glazed));
+            return;
+          }
+          // Full model: every category at normal materials (subjects already painted above).
+          if (role === "volume") { o.visible = true; o.material = styleLinkMaterial(o, M.volume); return; }
+          if (role === "ceiling") { o.visible = !cutL; o.material = styleLinkMaterial(o, M.ceiling); return; }
           o.visible = true;
-          o.material = below || quiet ? M.ghost : matFor(role, o.userData.levelRef || L);
+          o.material = styleLinkMaterial(o, below || quiet ? M.ghost : matFor(role, o.userData.levelRef || L, o.userData.displayColor, o.userData.glazed));
         });
       });
       scaleBar.children.forEach(c => c.material = M.scale);
@@ -363,19 +574,34 @@
       scaleBar.position.set(L.box.min.x, L.elev + offsetOf(L) + 0.02, L.box.max.z + 2.2);
     }
     function scaleAnchors() { if (!scaleBar.visible) return []; return [0, 5, 10].map(x => { const w = new THREE.Vector3(x, 0, 0); scaleBar.localToWorld(w); const s = toScreen(w); return s && { x: s.x, y: s.y, t: x === 10 ? "10 m" : String(x) }; }).filter(Boolean); }
-    function placeLevels(instant) { levels.forEach(L => { L.targetY = pres.levels === "exploded" ? L.index * explodeGap : 0; if (instant || reduced()) L.group.position.y = L.targetY; }); }
+    function placeLevels(instant) {
+      const gap = explodeGap * Math.max(0.05, explodeScale);
+      levels.forEach(L => { L.targetY = pres.levels === "exploded" ? L.index * gap : 0; if (instant || reduced()) L.group.position.y = L.targetY; });
+    }
 
     function setSpec(s, instant = true) {
       spec = s; subj = new Map((s.subjects || []).map(x => [x.id, x]));
       subjOfEl = new Map(); elOfSubj = new Map(); relatedKeys = new Set();
       (s.subjects || []).forEach(x => {
-        const k = elements.has(x.id) ? x.id : (x.revit_id != null && elements.has(String(x.revit_id)) ? String(x.revit_id) : null);
-        if (k) { subjOfEl.set(k, x.id); elOfSubj.set(x.id, k); }
-        (x.related || []).forEach(r => { const rk = String(r); if (elements.has(rk)) relatedKeys.add(rk); });
+        // Subjects with derived geometry (clash box, clear-height zone) keep their own id as the
+        // mesh key. Mapping them onto a long host duct made pins sit on the duct centre.
+        if (!x.geometry) {
+          const candidates = [x.id, x.revit_id != null ? String(x.revit_id) : null].filter(Boolean);
+          let k = null;
+          for (const c of candidates) { k = resolveElementKey(c); if (k) break; }
+          if (k) { subjOfEl.set(k, x.id); elOfSubj.set(x.id, k); if (String(x.id) !== k) elOfSubj.set(String(x.revit_id || x.id), k); }
+        }
+        (x.related || []).forEach(r => {
+          const rk = resolveElementKey(r) || (elements.has(String(r)) ? String(r) : null);
+          if (rk) relatedKeys.add(rk);
+        });
       });
       const p = s.presentation || {};
       pres.show = p.show || "in-context";
-      pres.levels = p.levels || (s.view && s.view.level ? "cut" : "stacked");
+      // Always open stacked — exploded is a user choice (Spread slider), not the default first view.
+      let lvlMode = p.levels || (s.view && s.view.level ? "cut" : "stacked");
+      if (lvlMode === "exploded") lvlMode = "stacked";
+      pres.levels = lvlMode;
       const cutL = s.view && s.view.level ? levels.find(l => l.name === s.view.level || l.id === String(s.view.level)) : null;
       pres.cutLevel = cutL ? cutL.id : null;
       if (pres.levels === "cut" && !cutL) pres.levels = "stacked";
@@ -388,9 +614,23 @@
     function clearSpec() { spec = null; subj = new Map(); subjOfEl = new Map(); elOfSubj = new Map(); relatedKeys = new Set(); buildOverlays(); pres.show = "everything"; pres.levels = "stacked"; paint(); home(true); }
     function setShow(v) { pres.show = v; paint(); home(); }
     function setLevels(mode, levelId, noHome) { pres.levels = mode; if (levelId !== undefined) pres.cutLevel = levelId; placeLevels(false); paint(); if (!noHome) home(); }
+    function setExplodeScale(v, opts) {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return explodeScale;
+      explodeScale = Math.min(2, Math.max(0.2, n));
+      if (pres.levels === "exploded") {
+        placeLevels(!!(opts && opts.instant));
+        paint();
+        if (!(opts && opts.noHome)) home(false);
+      }
+      return explodeScale;
+    }
+    function getExplodeScale() { return explodeScale; }
     function focusOn(id) {
       const lvl = levelOf(id);
-      if (lvl && pres.levels !== "exploded" && pres.show !== "failures-only" && !(pres.levels === "cut" && pres.cutLevel === lvl)) setLevels("cut", lvl, true);
+      // Always cut to the subject's storey when focusing a list/callout item — staying in
+      // exploded/stacked made the camera move too subtle to notice ("viewer didn't refresh").
+      if (lvl && !(pres.levels === "cut" && String(pres.cutLevel) === String(lvl))) setLevels("cut", lvl, true);
       root.updateMatrixWorld(true); flyTo(id); drawRing();
     }
     function setView(v) { pres.view = v; camera = v === "plan" ? ortho : persp; controls.enabled = v !== "plan"; orthoControls.enabled = v === "plan"; home(true); }
@@ -398,7 +638,16 @@
     // ---------- Camera ----------
     const tween = { t: 1 };
     function isShown(o) { let p = o; while (p) { if (!p.visible) return false; p = p.parent; } return true; }
-    function bboxIds(ids) { const b = new THREE.Box3(); ids.forEach(id => meshesOf(id).forEach(m => { if (!isShown(m)) return; m.updateWorldMatrix(true, false); b.expandByObject(m); })); return b; }
+    function bboxIds(ids) {
+      const b = new THREE.Box3();
+      ids.forEach(id => {
+        const ms = meshesOf(id);
+        // Prefer visible meshes; if none (e.g. volume still hidden), fall back so focus/fly still works.
+        const use = ms.some(isShown) ? ms.filter(isShown) : ms;
+        use.forEach(m => { m.updateWorldMatrix(true, false); b.expandByObject(m); });
+      });
+      return b;
+    }
     function buildingBox() {
       const b = new THREE.Box3();
       const cutIdx = pres.levels === "cut" && pres.cutLevel ? levelIndex(pres.cutLevel) : -1;
@@ -463,7 +712,16 @@
         const key = h.object.userData.id; if (!key) continue;
         if (subj.has(key)) return key;
         if (subjOfEl.has(key)) return subjOfEl.get(key);
-        const owner = [...subj.values()].find(s => (s.related || []).map(String).includes(key)); if (owner) return owner.id;
+        const info = elementInfo.get(key);
+        if (info && info.elementId != null) {
+          const eid = String(info.elementId);
+          if (subj.has(eid)) return eid;
+          if (subjOfEl.has(key)) return subjOfEl.get(key);
+          const hit = [...subj.values()].find(s => String(s.revit_id) === eid || String(s.id) === eid);
+          if (hit) return hit.id;
+        }
+        const owner = [...subj.values()].find(s => (s.related || []).map(String).includes(key) || (info && (s.related || []).map(String).includes(String(info.elementId))));
+        if (owner) return owner.id;
       }
       return null;
     }
@@ -471,10 +729,11 @@
     renderer.domElement.addEventListener("pointerdown", e => { down = [e.clientX, e.clientY]; });
     renderer.domElement.addEventListener("pointerup", e => {
       if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5) return;
-      const hits = hitAt(e.clientX, e.clientY), sid = subjectFromHits(hits);
+      const hits = hitAt(e.clientX, e.clientY);
+      const sid = subjectFromHits(hits);
       select(sid, true);
       const first = hits.find(h => h.object.userData.id && h.object.userData.kind !== "zone");
-      if (first) listeners.pick.forEach(f => f(first.object.userData.id, elementInfo.get(first.object.userData.id)));
+      listeners.pick.forEach(f => f(first ? first.object.userData.id : null, first ? elementInfo.get(first.object.userData.id) : null));
     });
     renderer.domElement.addEventListener("dblclick", e => { const sid = subjectFromHits(hitAt(e.clientX, e.clientY)); if (sid) flyTo(sid); });
     renderer.domElement.addEventListener("pointermove", e => { if (!hoverCb || e.buttons) return; const sid = subjectFromHits(hitAt(e.clientX, e.clientY)); renderer.domElement.style.cursor = sid ? "pointer" : ""; hoverCb(sid ? { id: sid, x: e.clientX, y: e.clientY } : null); });
@@ -489,11 +748,19 @@
       return hits.length > 0 && !own.includes(hits[0].object.userData.id);
     }
     function anchorOf(id) {
-      const b = bboxIds([id]); if (b.isEmpty()) return null;
+      const sb = subj.get(id);
+      // Clash / clearance volumes: pin on the overlay box, not on a long host duct that only
+      // shares revit_id with the subject (that put numbered pins metres away from the clash).
+      let b = new THREE.Box3();
+      if (sb && sb.geometry) {
+        const zones = (elements.get(String(id)) || []).filter(m => m && m.userData && m.userData.kind === "zone");
+        zones.forEach(m => { m.updateWorldMatrix(true, false); b.expandByObject(m); });
+      }
+      if (b.isEmpty()) b = bboxIds([id]);
+      if (b.isEmpty()) return null;
       const v = b.getCenter(new THREE.Vector3()); v.y = Math.min(b.max.y, v.y + 0.6);
       if (clipPlane.constant < 1e5 && clipPlane.distanceToPoint(v) < 0) v.y = clipPlane.constant - 0.1;
       const s = toScreen(v); if (!s) return null;
-      const sb = subj.get(id);
       return Object.assign(s, { occluded: occluded(v, [id, keyOf(id), ...((sb && sb.related) || []).map(String)]) });
     }
     function measureAnchors() { return measures.filter(m => m.group.visible).map(m => { const w = m.mid.clone(); m.group.localToWorld(w); const s = toScreen(w); return s && { id: m.id, x: s.x, y: s.y, text: m.text, sub: m.sub }; }).filter(Boolean); }
@@ -522,7 +789,66 @@
     ro.observe(container);
 
     return {
-      loadMesh, applyDelta, loadSample, setSpec, clearSpec, setShow, setLevels, setView, home, select, flyTo, flyToIds, focusOn,
+      loadMesh, applyDelta, loadSample, setSpec, clearSpec, setShow, setLevels, setExplodeScale, getExplodeScale, setView, home, select, flyTo, flyToIds, focusOn,
+      linkList() {
+        const by = new Map();
+        elementInfo.forEach(info => {
+          if (!info.linkId) return;
+          if (!by.has(info.linkId)) by.set(info.linkId, { id: info.linkId, name: info.name || info.linkId });
+        });
+        return [...by.values()].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      },
+      isLinkHidden(id) { return hiddenLinks.has(String(id)); },
+      clearFacet,
+      facetActive() { return hiddenRoles.size > 0 || hiddenModels.size > 0; },
+      facetOn(kind, id) {
+        const set = kind === "models" ? hiddenModels : hiddenRoles;
+        return !set.has(String(id));
+      },
+      setFacetVisible,
+      facetSummary() {
+        const roles = new Map();
+        const models = new Map();
+        elementInfo.forEach(info => {
+          const role = info.role || "furn";
+          const id = info.linkId ? String(info.linkId) : "host";
+          const name = info.linkId ? (info.modelName || info.name || "Link") : "Host";
+          const row = models.get(id) || { id, name, count: 0 };
+          row.count += 1;
+          if (!info.linkId) row.name = "Host";
+          models.set(id, row);
+          // Categories follow the Models checkboxes above — only count what is still shown.
+          if (hiddenModels.has(id)) return;
+          roles.set(role, (roles.get(role) || 0) + 1);
+        });
+        const roleOrder = ["wall", "curtain", "glass", "door", "slab", "roof", "ceiling", "stair", "railing", "vertical", "struct", "mep", "plumbing", "light", "furn", "equip", "site", "generic", "volume", "other", "link"];
+        return {
+          roles: [...roles.entries()].map(([id, count]) => ({ id, count })).sort((a, b) => roleOrder.indexOf(a.id) - roleOrder.indexOf(b.id)),
+          models: [...models.values()].sort((a, b) => (a.id === "host" ? -1 : b.id === "host" ? 1 : String(a.name).localeCompare(String(b.name)))),
+        };
+      },
+      spaceCount() { let n = 0; elementInfo.forEach(info => { if (info.role === "volume") n++; }); return n; },
+      spacesVisible() { return showSpaces && !hiddenRoles.has("volume"); },
+      setSpacesVisible(on) {
+        showSpaces = !!on;
+        if (on) hiddenRoles.delete("volume");
+        else hiddenRoles.add("volume");
+        paint();
+        return showSpaces && !hiddenRoles.has("volume");
+      },
+      getLinkStyle(id) { return linkStyles.get(String(id)) || { color: null, opacity: 1 }; },
+      setLinkStyle(id, patch) {
+        const key = String(id);
+        const cur = linkStyles.get(key) || { color: null, opacity: 1 };
+        const next = {
+          color: patch && Object.prototype.hasOwnProperty.call(patch, "color") ? (patch.color || null) : cur.color,
+          opacity: patch && typeof patch.opacity === "number" ? Math.max(0.05, Math.min(1, patch.opacity)) : cur.opacity,
+        };
+        if (!next.color && next.opacity >= 0.999) linkStyles.delete(key);
+        else linkStyles.set(key, next);
+        paint();
+        return next;
+      },
       setInsets(top, bottom = 0) { const t = Math.max(0, Math.round(top)), b = Math.max(0, Math.round(bottom)); if (t === insetTop && b === insetBottom) return; insetTop = t; insetBottom = b; applyInsets(); },
       anchorOf, measureAnchors, levelAnchors, scaleAnchors, compassAngle,
       capture(opts = {}) { const mime = opts.format === "jpeg" ? "image/jpeg" : "image/png"; renderer.render(scene, camera); return renderer.domElement.toDataURL(mime, opts.quality || 0.9); },
@@ -531,7 +857,7 @@
       info(id) { return elementInfo.get(String(id)); },
       setRendering(on) { running = !!on; },
       on(evt, fn) { (listeners[evt] = listeners[evt] || []).push(fn); }, onHover(fn) { hoverCb = fn; },
-      retheme() { makeMaterials(); root.traverse(o => { if (o.isMesh && o.userData.role && !o.parent.userData.overlay) o.material = matFor(o.userData.role, o.userData.levelRef); }); if (spec) buildOverlays(); paint(); drawRing(); },
+      retheme() { linkMatCache.clear(); makeMaterials(); root.traverse(o => { if (o.isMesh && o.userData.role && !o.parent.userData.overlay) o.material = styleLinkMaterial(o, matFor(o.userData.role, o.userData.levelRef, o.userData.displayColor, o.userData.glazed)); }); if (spec) buildOverlays(); paint(); drawRing(); },
       dispose() { cancelAnimationFrame(raf); ro.disconnect(); renderer.dispose(); },
     };
   }

@@ -36,7 +36,8 @@ namespace revit_mcp_plugin.Core
             PushButton toggleButton = mcpPanel.AddItem(toggleData) as PushButton;
             McpToggleButton.Initialize(toggleButton);
 
-            // One dockable panel: Model (3D) + Dynamic Report. Schedule/GBP stay in Cursor MCP Apps.
+            // Agent Canvas dock: Model ribbon only. Schedule/GBP stay in Cursor MCP Apps;
+            // Dynamic Report still reachable via panel_show_report / panel_set_view — no Report ribbon.
             PushButtonData modelData = new PushButtonData(
                 "ID_EXCMD_MCP_PANEL_MODEL",
                 "Model",
@@ -47,17 +48,6 @@ namespace revit_mcp_plugin.Core
             modelData.AvailabilityClassName = Availability;
             modelData.Image = new BitmapImage(new Uri(resourcePrefix + ";component/Core/Ressources/panel-16.png", UriKind.RelativeOrAbsolute));
             modelData.LargeImage = new BitmapImage(new Uri(resourcePrefix + ";component/Core/Ressources/panel-32.png", UriKind.RelativeOrAbsolute));
-
-            PushButtonData reportData = new PushButtonData(
-                "ID_EXCMD_MCP_PANEL_REPORT",
-                "Report",
-                assemblyPath,
-                "revit_mcp_plugin.Panel.ShowReportViewCommand");
-            reportData.ToolTip = "Open Dynamic Report (panel_show_report).";
-            reportData.LongDescription = "Agent-pushed tables and summaries in the Agent Canvas panel.";
-            reportData.AvailabilityClassName = Availability;
-            reportData.Image = new BitmapImage(new Uri(resourcePrefix + ";component/Core/Ressources/panel-16.png", UriKind.RelativeOrAbsolute));
-            reportData.LargeImage = new BitmapImage(new Uri(resourcePrefix + ";component/Core/Ressources/panel-32.png", UriKind.RelativeOrAbsolute));
 
             PushButtonData hideData = new PushButtonData(
                 RibbonButtonId,
@@ -70,7 +60,6 @@ namespace revit_mcp_plugin.Core
             hideData.LargeImage = new BitmapImage(new Uri(resourcePrefix + ";component/Core/Ressources/panel-32.png", UriKind.RelativeOrAbsolute));
 
             mcpPanel.AddItem(modelData);
-            mcpPanel.AddItem(reportData);
             mcpPanel.AddItem(hideData);
 
             PushButtonData settingsData = new PushButtonData(
@@ -89,14 +78,51 @@ namespace revit_mcp_plugin.Core
             // HUD "Load Revit view" / pick must work even before MCP is toggled On.
             PickExternalEvent.Register();
             LoadGeometryExternalEvent.Register(application);
+            _uiControlled = application;
+            application.Idling += HideCanvasOnStartup;
 
             return Result.Succeeded;
+        }
+
+        private static UIControlledApplication _uiControlled;
+
+        /// <summary>
+        /// Revit restores the last dock layout, so the canvas can come back open.
+        /// Close it once at startup. The Model ribbon still opens it on demand.
+        /// </summary>
+        private static void HideCanvasOnStartup(object sender, Autodesk.Revit.UI.Events.IdlingEventArgs e)
+        {
+            if (_uiControlled != null)
+            {
+                _uiControlled.Idling -= HideCanvasOnStartup;
+                _uiControlled = null;
+            }
+
+            if (!(sender is UIApplication uiApp))
+                return;
+
+            try
+            {
+                DockablePane pane = uiApp.GetDockablePane(PanelService.Instance.PaneId);
+                if (pane != null && pane.IsShown())
+                    pane.Hide();
+            }
+            catch
+            {
+                // Pane is not ready on the first idle. Leave it; the user can hide it from the ribbon.
+            }
         }
 
         public Result OnShutdown(UIControlledApplication application)
         {
             try
             {
+                if (_uiControlled != null)
+                {
+                    _uiControlled.Idling -= HideCanvasOnStartup;
+                    _uiControlled = null;
+                }
+
                 PanelDocumentSync.Shutdown();
 
                 if (SocketService.Instance.IsRunning)

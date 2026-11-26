@@ -5,7 +5,7 @@ using Autodesk.Revit.UI;
 
 namespace revit_mcp_plugin.Panel
 {
-    /// <summary>Model / Report ribbons → one dockable Agent Canvas.</summary>
+    /// <summary>Model ribbon → dockable Agent Canvas. Report ribbon removed; MCP can still set report view.</summary>
     internal static class PanelViewRibbon
     {
         public static Result ShowAndSetView(UIApplication uiApp, string view, ref string message)
@@ -29,12 +29,5 @@ namespace revit_mcp_plugin.Panel
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
             => PanelViewRibbon.ShowAndSetView(commandData.Application, "model", ref message);
-    }
-
-    [Transaction(TransactionMode.Manual)]
-    public class ShowReportViewCommand : IExternalCommand
-    {
-        public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
-            => PanelViewRibbon.ShowAndSetView(commandData.Application, "report", ref message);
     }
 }

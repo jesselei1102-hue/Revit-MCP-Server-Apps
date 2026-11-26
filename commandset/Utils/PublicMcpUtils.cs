@@ -94,13 +94,48 @@ namespace RevitMCPCommandSet.Utils
             return string.Empty;
         }
 
-        public static object GetBoundingBox(Element element)
+        public static object GetBoundingBox(Element element, Transform linkTransform = null)
         {
             var view = element?.Document?.ActiveView;
             var box = (view != null ? element.get_BoundingBox(view) : null)
                       ?? element.get_BoundingBox(null);
             if (box == null)
                 return null;
+
+            // Linked elements are in the link document's coordinates. Transform the eight
+            // corners into the host document when a RevitLinkInstance transform is supplied,
+            // so clash overlays land on the same meshes the Agent Canvas draws.
+            if (linkTransform != null && !linkTransform.IsIdentity)
+            {
+                var corners = new[]
+                {
+                    new XYZ(box.Min.X, box.Min.Y, box.Min.Z),
+                    new XYZ(box.Min.X, box.Min.Y, box.Max.Z),
+                    new XYZ(box.Min.X, box.Max.Y, box.Min.Z),
+                    new XYZ(box.Min.X, box.Max.Y, box.Max.Z),
+                    new XYZ(box.Max.X, box.Min.Y, box.Min.Z),
+                    new XYZ(box.Max.X, box.Min.Y, box.Max.Z),
+                    new XYZ(box.Max.X, box.Max.Y, box.Min.Z),
+                    new XYZ(box.Max.X, box.Max.Y, box.Max.Z),
+                };
+                double minX = double.PositiveInfinity, minY = double.PositiveInfinity, minZ = double.PositiveInfinity;
+                double maxX = double.NegativeInfinity, maxY = double.NegativeInfinity, maxZ = double.NegativeInfinity;
+                foreach (var corner in corners)
+                {
+                    var p = linkTransform.OfPoint(corner);
+                    if (p.X < minX) minX = p.X;
+                    if (p.Y < minY) minY = p.Y;
+                    if (p.Z < minZ) minZ = p.Z;
+                    if (p.X > maxX) maxX = p.X;
+                    if (p.Y > maxY) maxY = p.Y;
+                    if (p.Z > maxZ) maxZ = p.Z;
+                }
+                return new
+                {
+                    min = new { x = minX, y = minY, z = minZ },
+                    max = new { x = maxX, y = maxY, z = maxZ }
+                };
+            }
 
             return new
             {

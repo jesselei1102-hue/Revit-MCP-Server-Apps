@@ -164,11 +164,29 @@ namespace revit_mcp_plugin.Panel
             {
                 DockablePane pane = uiApp.GetDockablePane(_paneId);
                 if (!pane.IsShown()) pane.Show();
+                // HTML/JS live on disk under panel-view; re-navigate so ribbon "Model Panel"
+                // picks up fixes without a full Revit restart.
+                ReloadWebView();
             }
             catch (Exception ex)
             {
                 _lastError = ex.Message;
                 WritePanelLog("show_failed: " + ex);
+            }
+        }
+
+        /// <summary>Re-load panel-view/index.html from disk (cache-bust for JS/CSS fixes).</summary>
+        public void ReloadWebView()
+        {
+            try
+            {
+                if (_webView?.CoreWebView2 == null) return;
+                _webView.CoreWebView2.Navigate("https://panel.local/index.html");
+                WritePanelLog("webview_reload host=panel.local");
+            }
+            catch (Exception ex)
+            {
+                WritePanelLog("webview_reload_failed: " + ex.Message);
             }
         }
 
