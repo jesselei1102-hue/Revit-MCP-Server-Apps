@@ -253,6 +253,43 @@ namespace revit_mcp_plugin.Panel
         public string GetName() => "MCP Agent Canvas show report";
     }
 
+    internal class PanelShowResultEventHandler : IExternalEventHandler
+    {
+        private readonly ManualResetEvent _resetEvent = new(false);
+        private JObject _spec;
+
+        public object Result { get; private set; }
+
+        public void SetResult(JObject spec)
+        {
+            _spec = spec;
+            Result = null;
+            _resetEvent.Reset();
+        }
+
+        public void Execute(UIApplication app)
+        {
+            try
+            {
+                PanelService.Instance.Show(app);
+                Result = PanelBridge.PostSetResult(_spec);
+            }
+            catch (Exception ex)
+            {
+                PanelBridge.SetError(ex.Message);
+                Result = new { ok = false, error = "panel_show_result_failed", message = ex.Message };
+            }
+            finally
+            {
+                _resetEvent.Set();
+            }
+        }
+
+        public bool WaitForCompletion(int timeoutMilliseconds) => _resetEvent.WaitOne(timeoutMilliseconds);
+
+        public string GetName() => "MCP Agent Canvas show result";
+    }
+
     internal class PanelSetViewEventHandler : IExternalEventHandler
     {
         private readonly ManualResetEvent _resetEvent = new(false);

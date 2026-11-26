@@ -33,6 +33,7 @@ namespace revit_mcp_plugin.Panel
                 new PanelSetAnalysisCommand(uiApp),
                 new PanelSetAnnotationsCommand(uiApp),
                 new PanelShowReportCommand(uiApp),
+                new PanelShowResultCommand(uiApp),
                 new PanelSetViewCommand(uiApp),
                 new PanelFitCommand(uiApp),
                 new PanelClearCommand(uiApp),
@@ -212,6 +213,35 @@ namespace revit_mcp_plugin.Panel
     }
 
     internal sealed class WaitablePanelShowReportHandler : PanelShowReportEventHandler, IWaitableExternalEventHandler
+    {
+    }
+
+    /// <summary>
+    /// Show an agent Result Spec on the model-first Agent Canvas (layout, show mode and overlays chosen by the agent).
+    /// </summary>
+    internal sealed class PanelShowResultCommand : ExternalEventCommandBase
+    {
+        private WaitablePanelShowResultHandler HandlerInstance => (WaitablePanelShowResultHandler)Handler;
+
+        public PanelShowResultCommand(UIApplication uiApp)
+            : base(new WaitablePanelShowResultHandler(), uiApp)
+        {
+        }
+
+        public override string CommandName => "panel_show_result";
+
+        public override object Execute(JObject parameters, string requestId)
+        {
+            JObject spec = parameters?["result"] as JObject ?? parameters?["spec"] as JObject;
+            HandlerInstance.SetResult(spec);
+            if (!RaiseAndWaitForCompletion(10000))
+                throw CreateTimeoutException(CommandName);
+
+            return HandlerInstance.Result;
+        }
+    }
+
+    internal sealed class WaitablePanelShowResultHandler : PanelShowResultEventHandler, IWaitableExternalEventHandler
     {
     }
 

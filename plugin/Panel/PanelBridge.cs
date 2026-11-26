@@ -22,6 +22,8 @@ namespace revit_mcp_plugin.Panel
         public static List<PanelAnalysisItem> LastAnalysis { get; private set; } = new();
         public static JArray LastAnnotations { get; private set; } = new();
         public static JObject LastReport { get; private set; }
+        /// <summary>Last Result Spec (revit-result/1) shown on the Agent Canvas.</summary>
+        public static JObject LastResult { get; private set; }
         public static string ActiveView { get; private set; } = "model";
         public static long? LastPickElementId { get; private set; }
         public static DateTime? LastPickAtUtc { get; private set; }
@@ -228,6 +230,29 @@ namespace revit_mcp_plugin.Panel
                 mode = "static",
                 title = LastReport.Value<string>("title"),
                 kind = LastReport.Value<string>("kind") ?? LastReport.Value<string>("type"),
+            };
+        }
+
+        /// <summary>
+        /// Show an agent result (Result Spec, revit-result/1) on the model-first canvas.
+        /// The MCP server validates it against RPS-1 before it gets here; the page validates it again
+        /// and draws it in the model. If no model is loaded yet, the page asks for the active view first.
+        /// </summary>
+        public static object PostSetResult(JObject spec)
+        {
+            if (spec == null)
+                return new { ok = false, error = "missing_result", message = "No result was supplied." };
+            LastResult = (JObject)spec.DeepClone();
+            ActiveView = "model";
+            PanelService.Instance.SetSurface("model");
+            PostToJs("set_result", new { spec = LastResult });
+            return new
+            {
+                ok = true,
+                title = LastResult.Value<string>("title") ?? LastResult.Value<string>("question"),
+                layout = LastResult["presentation"]?.Value<string>("layout"),
+                subjects = (LastResult["subjects"] as JArray)?.Count ?? 0,
+                modelLoaded = LastGeometry != null,
             };
         }
 

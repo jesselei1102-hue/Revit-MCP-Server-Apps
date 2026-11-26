@@ -59,6 +59,24 @@ MCP Apps and normal MCP tools solve different jobs. Use both. The Schedule App i
 
 **Rule of thumb:** HITL table / check review → MCP Apps; hands-off automation → tools. Open the Schedule App, then let tools handle scripted follow-ups.
 
+### Agent Canvas · model-first results (`canvas_show_result`)
+
+The dockable **Agent Canvas** pane shows an agent's answer *in the building*, not as a dashboard. The agent sends a **Result Spec** (`revit-result/1`) and chooses the layout for the question:
+
+| Question | Layout the agent picks |
+| --- | --- |
+| Whole-model screening, few failures (e.g. "check clear height everywhere") | **Model focus**, only failures over an X-ray of the building, levels exploded, measured heights drawn in the model |
+| One storey, mixed results (e.g. fire doors on Level 2) | **Model and list**, cut at that storey, items beside the model |
+| 2–8 issues to walk through (review prep, client walk) | **Walk-through**: one stop per issue, each cut at its storey |
+| Everything passes | **Model focus**, whole building with the results in the pass colour |
+
+Every result is checked against the **Result Presentation Standard (RPS-1)** before it is drawn — plain-language answer first, a legend that says what each colour means, the rule and data source, what was not checked. A result that breaks a rule is not shown; the agent gets the list back to fix.
+
+- Page: `plugin/Panel/panel-view/index.html` with the built-in viewer `canvas/viewer.js` (Three.js r128, offline). The previous page is kept as `classic.html`.
+- Mesh export now carries each element's **level** and the model's **level list**, so the canvas can stack, explode or cut by storey.
+- Older panel tools still work: `panel_set_analysis` becomes a simple result, `panel_show_report` shows a report panel, `panel_capture` and picking are unchanged.
+- Try it in a browser without Revit: serve `plugin/Panel/panel-view/` and open `index.html` (sample building), or run `node tools/canvas/make-demo-mesh.mjs` and open `index.html?mesh=tmp/demo-mesh.json` to exercise the real mesh path.
+
 ### Model checks (server)
 
 Rule engine lives in the Node MCP server (`server/src/checks/`):
@@ -160,6 +178,7 @@ Prefer dedicated tools before `send_code_to_revit`. Coordinates and sizes are mi
 
 | Tool | Description |
 | ---- | ----------- |
+| `canvas_show_result` | Show a Result Spec in the Agent Canvas, in the layout the agent chooses (checked against RPS-1 first) |
 | `mcp_apps_get_schedule_data` | Schedule UI (Elements / Checks) |
 | `store_project_data` | Persist project metadata in local SQLite |
 | `store_room_data` | Persist room metadata for a project |

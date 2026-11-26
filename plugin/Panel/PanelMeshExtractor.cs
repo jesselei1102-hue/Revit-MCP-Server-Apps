@@ -286,7 +286,60 @@ namespace revit_mcp_plugin.Panel
 
             PanelService.Instance.WritePanelLog(
                 $"Extract done elements={result.Elements.Count} skipped={result.SkippedElements} verts={result.TotalVertices} elapsedMs={sw.ElapsedMilliseconds} truncated={result.Truncated} cutElements={cutElements} cutIndices={cutIndices} cutFacesSeen={cutContext.FacesDeferred}");
+            AssignLevels(doc, result);
             return result;
+        }
+
+        /// <summary>
+        /// Records the document's levels and tags each element with one, so the canvas can work storey by storey.
+        /// Uses Element.LevelId when it names a Level; otherwise the highest level at or below the element's bounding box.
+        /// Never throws: a model without levels simply sends none.
+        /// </summary>
+        private static void AssignLevels(Document doc, PanelMeshResult result)
+        {
+            if (doc == null || result == null)
+                return;
+            List<Level> levels;
+            try
+            {
+                levels = new FilteredElementCollector(doc).OfClass(typeof(Level)).Cast<Level>().OrderBy(l => l.Elevation).ToList();
+            }
+            catch (Exception)
+            {
+                return;
+            }
+
+            foreach (Level level in levels)
+                result.Levels.Add(new PanelMeshLevel { Id = PanelElementIds.GetValue(level.Id), Name = level.Name, Elevation = level.Elevation });
+            if (levels.Count == 0)
+                return;
+
+            var levelIds = new HashSet<long>(result.Levels.Select(l => l.Id));
+            foreach (PanelMeshElementInfo info in result.Elements)
+            {
+                try
+                {
+                    Element element = doc.GetElement(PanelElementIds.Create(info.ElementId));
+                    if (element == null || element is RevitLinkInstance)
+                        continue;
+                    ElementId levelId = element.LevelId;
+                    if (levelId != null && levelId != ElementId.InvalidElementId && levelIds.Contains(PanelElementIds.GetValue(levelId)))
+                    {
+                        info.LevelId = PanelElementIds.GetValue(levelId);
+                        continue;
+                    }
+                    BoundingBoxXYZ box = element.get_BoundingBox(null);
+                    if (box == null)
+                        continue;
+                    double z = box.Min.Z + 0.5; // half a foot of tolerance for slabs sitting just under a level
+                    Level below = levels.LastOrDefault(l => l.Elevation <= z) ?? levels[0];
+                    info.LevelId = PanelElementIds.GetValue(below.Id);
+                }
+                catch (Exception)
+                {
+                    // one odd element must not lose the whole level table
+                }
+            }
         }
 
         /// <summary>
