@@ -189,11 +189,19 @@ Prefer dedicated tools before `send_code_to_revit`. Coordinates and sizes are mi
 
 | Tool | Description |
 | ---- | ----------- |
-| `send_code_to_revit` | **Last resort** — C# when no dedicated tool covers the API |
+| `send_code_to_revit` | **Last resort** — C# when no dedicated tool covers the API. **Off by default**, see [Security](#security) |
+
+## Security
+
+The add-in and the MCP server talk over a local socket. Three rules protect it:
+
+- **Loopback only.** The add-in listens on `127.0.0.1:8080`. Other machines on the network cannot connect.
+- **Session token.** Each time you switch **MCP On**, the add-in writes a new random token to `%LOCALAPPDATA%\RevitMCP\token-8080`. That folder belongs to your Windows user. The MCP server reads the file and sends the token with every request. Requests without it are rejected. Switching **MCP Off** deletes the file. You can override the token with `REVIT_MCP_TOKEN`, or the file location with `REVIT_MCP_TOKEN_FILE`.
+- **No code execution by default.** `send_code_to_revit` compiles and runs any C# inside Revit, so the add-in refuses it until you opt in. To allow it, set `"allowCodeExecution": true` in `revit_mcp_plugin\Commands\security.json` next to the add-in, then switch MCP Off and On. This file is separate from the command settings, so saving the settings page never turns it back on.
 
 ## Install
 
-Two pieces. The [release zip](https://github.com/jesselei1102-hue/Revit-MCP-Server-Apps/releases/latest) is the Revit add-in. The MCP server is this repo, built with Node and started by Cursor. They talk on `localhost:8080`.
+Two pieces. The [release zip](https://github.com/jesselei1102-hue/Revit-MCP-Server-Apps/releases/latest) is the Revit add-in. The MCP server is this repo, built with Node and started by Cursor. They talk on `127.0.0.1:8080`, authenticated with a per-session token (see [Security](#security)). The add-in and the server must be from the same release: an older server without the token gets "Unauthorized".
 
 You need **Node.js 20+**, **Revit 2020–2027**, and an MCP client that can show MCP Apps (Cursor).
 
@@ -209,7 +217,7 @@ You need **Node.js 20+**, **Revit 2020–2027**, and an MCP client that can show
 
 Revit 2026 is `C:\Users\<you>\AppData\Roaming\Autodesk\Revit\Addins\2026\`. The year folder must contain `mcp-servers-for-revit.addin` and `revit_mcp_plugin\` next to each other. If Extract All wrapped them in an extra folder, move those two items up.
 
-4. Start Revit and open a project. On the **Add-Ins** tab, panel **Revit MCP Plugin**, click **MCP Off**. The button switches to **MCP On** and listens on port **8080**.
+4. Start Revit and open a project. On the **Add-Ins** tab, panel **Revit MCP Plugin**, click **MCP Off**. The button switches to **MCP On**, listens on `127.0.0.1:8080`, and writes the session token for the MCP server.
 
 ### 2. MCP server in Cursor
 

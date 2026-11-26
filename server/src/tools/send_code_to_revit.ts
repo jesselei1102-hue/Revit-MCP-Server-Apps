@@ -12,7 +12,7 @@ const transactionModeSchema = z
 export function registerSendCodeToRevitTool(server: McpServer) {
   server.tool(
     "send_code_to_revit",
-    "LAST RESORT. Do not use if a dedicated Revit tool can do the job. Prefer query_model, get_element_data, get_current_view_elements, get_selected_elements, ai_element_filter, operate_element, create_grid, create_level, create_room, create_point_based_element, create_line_based_element, create_surface_based_element, create_dimensions, open_view, zoom_to_elements, select_elements, export_views, color_elements, delete_element. Use only when those tools cannot express the API (complex geometry, custom transactions, unsupported filters). Code is inserted into a template Execute method with Document access.",
+    "LAST RESORT. Do not use if a dedicated Revit tool can do the job. Prefer query_model, get_element_data, get_current_view_elements, get_selected_elements, ai_element_filter, operate_element, create_grid, create_level, create_room, create_point_based_element, create_line_based_element, create_surface_based_element, create_dimensions, open_view, zoom_to_elements, select_elements, export_views, color_elements, delete_element. Use only when those tools cannot express the API (complex geometry, custom transactions, unsupported filters). Code is inserted into a template Execute method with Document access. Disabled by default in the Revit plugin: it only runs if the user set allowCodeExecution=true in the plugin's Commands\\security.json; otherwise it returns a 'disabled' error, so do not retry.",
     {
       code: z
         .string()

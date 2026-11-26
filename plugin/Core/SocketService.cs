@@ -25,6 +25,13 @@ namespace revit_mcp_plugin.Core
         private ICommandRegistry _commandRegistry;
         private ILogger _logger;
         private CommandExecutor _commandExecutor;
+        private readonly SessionToken _sessionToken = new SessionToken();
+        private SecuritySettings _security = new SecuritySettings();
+
+        // JSON-RPC implementation-defined server error codes (-32000 to -32099).
+        private const int UnauthorizedErrorCode = -32001;
+        private const int MethodDisabledErrorCode = -32002;
+        private const string CodeExecutionMethod = "send_code_to_revit";
 
         public static SocketService Instance
         {
@@ -104,6 +111,10 @@ namespace revit_mcp_plugin.Core
             //}
             _port = revit_mcp_plugin.Panel.PanelBuildInfo.SocketPort;
 
+            // Security switches (code execution is off unless security.json says otherwise).
+            _security = SecuritySettings.Load(msg => _logger.Warning(msg));
+            _logger.Info("Code execution over MCP socket: {0}", _security.AllowCodeExecution ? "ENABLED" : "disabled");
+
             // 加载命令
             // Load command.
             CommandManager commandManager = new CommandManager(
@@ -122,8 +133,13 @@ namespace revit_mcp_plugin.Core
 
             try
             {
-                _listener = new TcpListener(IPAddress.Any, _port);
+                // Loopback only: the MCP server always runs on the same machine as Revit.
+                _listener = new TcpListener(IPAddress.Loopback, _port);
                 _listener.Start();
+
+                // Issue the token only after the port is ours, so a second Revit instance
+                // that fails to bind never overwrites the first instance's token file.
+                _sessionToken.Issue(_port);
 
                 _isRunning = true;
                 _listenerThread = new Thread(ListenForClients)
@@ -161,6 +177,7 @@ namespace revit_mcp_plugin.Core
             if (!_isRunning) return;
 
             _isRunning = false;
+            _sessionToken.Revoke();
 
             try
             {
@@ -183,6 +200,7 @@ namespace revit_mcp_plugin.Core
         private void CleanupFailedStart()
         {
             _isRunning = false;
+            _sessionToken.Revoke();
             try
             {
                 _listener?.Stop();
@@ -330,7 +348,22 @@ namespace revit_mcp_plugin.Core
             {
                 // 解析JSON-RPC请求
                 // Parse JSON-RPC requests.
-                request = JsonConvert.DeserializeObject<JsonRPCRequest>(requestJson);
+                JObject raw = JObject.Parse(requestJson);
+
+                // Authenticate before touching the command registry.
+                if (!_sessionToken.Matches(raw.Value<string>("auth")))
+                {
+                    _logger.Warning("Rejected MCP socket request without a valid session token (method: {0})",
+                        raw.Value<string>("method") ?? "?");
+                    return CreateErrorResponse(
+                        raw.Value<string>("id"),
+                        UnauthorizedErrorCode,
+                        "Unauthorized: missing or invalid session token. The MCP server reads it from " +
+                        SessionToken.GetTokenFilePath(_port) + " (or REVIT_MCP_TOKEN)."
+                    );
+                }
+
+                request = raw.ToObject<JsonRPCRequest>();
 
                 // 验证请求格式是否有效
                 // Verify that the request format is valid.
@@ -341,6 +374,15 @@ namespace revit_mcp_plugin.Core
                         JsonRPCErrorCodes.InvalidRequest,
                         "Invalid JSON-RPC request"
                     );
+                }
+
+                // Arbitrary code execution stays off unless security.json opts in.
+                if (string.Equals(request.Method, CodeExecutionMethod, StringComparison.Ordinal) &&
+                    !_security.AllowCodeExecution)
+                {
+                    return CreateErrorResponse(request.Id, MethodDisabledErrorCode,
+                        "send_code_to_revit is disabled. To allow it, set \"allowCodeExecution\": true in " +
+                        SecuritySettings.GetFilePath() + " and restart the MCP service in Revit.");
                 }
 
                 // 查找命令
