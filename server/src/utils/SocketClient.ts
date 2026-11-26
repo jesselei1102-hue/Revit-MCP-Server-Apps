@@ -4,15 +4,17 @@ import { StringDecoder } from "string_decoder";
 export class RevitClientConnection {
   host: string;
   port: number;
+  token?: string;
   socket: net.Socket;
   isConnected: boolean = false;
   responseCallbacks: Map<string, (response: string) => void> = new Map();
   buffer: string = "";
   private decoder = new StringDecoder("utf8");
 
-  constructor(host: string, port: number) {
+  constructor(host: string, port: number, token?: string) {
     this.host = host;
     this.port = port;
+    this.token = token;
     this.socket = new net.Socket();
     this.setupSocketListeners();
   }
@@ -93,6 +95,17 @@ export class RevitClientConnection {
     }
   }
 
+  /** The JSON-RPC request written to the socket. `auth` carries the Revit session token. */
+  public buildRequest(command: string, params: any, requestId: string) {
+    return {
+      jsonrpc: "2.0",
+      method: command,
+      params: params,
+      id: requestId,
+      ...(this.token ? { auth: this.token } : {}),
+    };
+  }
+
   public sendCommand(command: string, params: any = {}): Promise<any> {
     return new Promise((resolve, reject) => {
       try {
@@ -104,12 +117,7 @@ export class RevitClientConnection {
         const requestId = this.generateRequestId();
 
         // 创建符合JSON-RPC标准的请求对象
-        const commandObj = {
-          jsonrpc: "2.0",
-          method: command,
-          params: params,
-          id: requestId,
-        };
+        const commandObj = this.buildRequest(command, params, requestId);
 
         // 存储回调函数
         this.responseCallbacks.set(requestId, (responseData) => {
